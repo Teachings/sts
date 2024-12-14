@@ -1,0 +1,6 @@
+torch
+torchaudio
+sounddevice
+scipy
+faster-whisper
+termcolor
