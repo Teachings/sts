@@ -139,16 +139,3 @@ To use this project on another system:
 ### Debugging Tips
 - Run `nvidia-smi` to verify GPU utilization.
 - Use logging in the script to pinpoint errors.
-
----
-
-## Future Improvements
-1. Add support for additional languages using the Whisper multilingual models.
-2. Implement a GUI for easier device selection and transcription display.
-3. Integrate audio enhancement features to improve noisy speech recognition.
-
----
-
-## Conclusion
-This project demonstrates a robust solution for real-time speech-to-text transcription using Faster Whisper and VAD. With its modular architecture, it can be adapted for various use cases, including live captions, meeting transcription, and voice-based control systems.
-
