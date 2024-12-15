@@ -55,3 +55,4 @@ __pycache__
 
 test_results.json
 *.wav
+transcriptions_*.json
