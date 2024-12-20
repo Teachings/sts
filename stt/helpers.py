@@ -44,15 +44,30 @@ def clear_context(transcription_data: TranscriptionData, current_transcription: 
         log("No transcription data to clear. Context already empty.", level="INFO")
 
 def save_transcription_to_json(transcription_data: TranscriptionData):
-    """Saves transcription data to a JSON file with a timestamped filename."""
-    output_folder = os.getcwd()
+    """Saves transcription data to a JSON file with a timestamped filename in a 'transcription_history' folder one level up."""
+    # Get the parent directory of the current working directory
+    output_folder = os.path.join(os.getcwd(), '..')
+    
+    # Define the path for the transcription_history folder
+    transcription_history_folder = os.path.join(output_folder, 'transcription_history')
+    
+    # Create the transcription_history folder if it doesn't exist
+    os.makedirs(transcription_history_folder, exist_ok=True)
+    
+    # Generate a timestamped filename
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     filename = f"transcriptions_{timestamp}.json"
-    output_path = os.path.join(output_folder, filename)
+    
+    # Construct the full output path
+    output_path = os.path.join(transcription_history_folder, filename)
+    
+    # Save the transcription data to the JSON file
+    with open(output_path, 'w') as f:
+        json.dump(transcription_data.model_dump(), f, indent=4)
 
     try:
         with open(output_path, "w") as json_file:
-            json.dump(transcription_data.dict(), json_file, indent=4)
+            json.dump(transcription_data.model_dump(), json_file, indent=4)
         log(f"Transcription saved to {output_path}", level="SUCCESS")
     except Exception as e:
         log(f"Error saving transcription to JSON: {str(e)}", level="ERROR")

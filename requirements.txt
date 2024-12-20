@@ -6,3 +6,4 @@ faster-whisper
 termcolor
 kafka-python
 pydantic
+pydub
