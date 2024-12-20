@@ -1,16 +1,6 @@
 import sounddevice as sd
 import json
-from helpers import log
-
-
-def load_config():
-    """Load configuration from config.json."""
-    try:
-        with open("config.json", "r") as config_file:
-            return json.load(config_file)
-    except Exception as e:
-        log(f"Error loading config.json: {str(e)}", level="ERROR")
-        return {"favorite_microphones": []}
+from helpers import load_config, log
 
 
 def list_audio_devices():

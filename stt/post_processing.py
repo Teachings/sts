@@ -1,5 +1,6 @@
 import json
-from helpers import log, produce_message
+from helpers import log, load_config
+from kafka import KafkaProducer
 
 def invoke_after_transcription(json_output):
     """
@@ -16,3 +17,22 @@ def invoke_after_transcription(json_output):
     produce_message(last_transcription['text'])
 
 
+def produce_message(message):
+
+    config = load_config()
+    BROKER = config.get("broker", [])
+    TOPIC_NAME = config.get("topic", [])
+
+    # Kafka Configuration
+    # BROKER = "localhost:9092"  # Replace with your broker's address if not localhost
+    # TOPIC_NAME = "text_to_speech"
+    # Initialize Kafka Producer
+    producer = KafkaProducer(bootstrap_servers=BROKER)   
+    try:
+        # Send message to the topic
+        producer.send(TOPIC_NAME, value=message.encode("utf-8"))
+        log(f"Message sent to topic '{TOPIC_NAME}': {message}", level="INFO", color="green")
+    except Exception as e:
+        log(f"Failed to send message to topic '{TOPIC_NAME}': {message}", level="ERROR", color="red")
+    finally:
+        producer.close()

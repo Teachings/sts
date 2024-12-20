@@ -1,5 +1,8 @@
 {
     "favorite_microphones": [
         "Elgato Wave XLR"
-    ]
+    ],
+    "time_gap_threshold": 1,
+    "broker": "localhost:9092",
+    "topic": "text_to_speech"
 }
