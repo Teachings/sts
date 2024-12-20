@@ -5,7 +5,7 @@ import signal
 from audio_utils import list_audio_devices, get_device_sampling_rate
 from vad import load_vad_model, record_audio_stream
 from transcriber import transcribe_audio_stream
-from helpers import log
+from helpers import log 
 
 # Global flag to signal threads to stop
 shutdown_event = threading.Event()

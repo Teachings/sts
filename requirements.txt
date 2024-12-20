@@ -4,3 +4,4 @@ sounddevice
 scipy
 faster-whisper
 termcolor
+kafka-python

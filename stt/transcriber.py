@@ -3,7 +3,8 @@ import json
 import time
 import queue
 from faster_whisper import WhisperModel
-from helpers import log
+from helpers import log, clear_context, display_transcriptions, generate_json, save_transcription_to_json
+from post_processing import invoke_after_transcription  # Import functions from helpers
 
 # Global state for managing transcription context
 transcription_data = {"transcriptions": []}
@@ -63,6 +64,8 @@ def transcribe_audio_stream(audio_queue, sample_rate, model_name="base.en", devi
 
             # Generate the JSON structure
             json_output = generate_json(transcription_data, current_transcription)
+
+            # Invoke post-processing function
             invoke_after_transcription(json_output)
 
             # Display aggregated transcriptions (only once per transcription)
@@ -85,80 +88,3 @@ def transcribe_audio_stream(audio_queue, sample_rate, model_name="base.en", devi
             "text": " ".join(item["text"] for item in current_transcription)
         })
     save_transcription_to_json(transcription_data)
-
-
-def clear_context():
-    """
-    Clears the current transcription context:
-    - Saves the current transcription data to a JSON file.
-    - Resets the transcription data and current transcription list.
-    """
-    global transcription_data, current_transcription
-
-    if transcription_data["transcriptions"] or current_transcription:
-        # Dump current transcriptions to disk
-        save_transcription_to_json(transcription_data)
-
-        # Clear in-memory data structures
-        transcription_data = {"transcriptions": []}
-        current_transcription = []
-
-        log("Transcription context cleared. Starting fresh.", level="SUCCESS")
-    else:
-        log("No transcription data to clear. Context already empty.", level="INFO")
-
-
-def display_transcriptions(transcriptions):
-    """Displays aggregated transcriptions grouped by timestamps in green."""
-    log("Aggregated Transcriptions:", level="SUCCESS")
-    for entry in transcriptions:
-        log(f"[{entry['timestamp']}] {entry['text']}", level="INFO", color="green")
-
-
-def generate_json(transcription_data, current_transcription):
-    """
-    Generates the updated JSON structure after every transcription.
-    This is where data is ready to be sent downstream or saved if required.
-    """
-    json_output = {
-        "transcriptions": transcription_data["transcriptions"] + [
-            {
-                "timestamp": current_transcription[0]["timestamp"],
-                "text": " ".join(item["text"] for item in current_transcription)
-            }
-        ]
-    }
-    return json_output
-
-
-def invoke_after_transcription(json_output):
-    """
-    Placeholder method for external integrations after every transcription.
-    Checks for specific phrases like 'clear context' and triggers actions.
-    """
-    # log(f"Generated JSON for downstream system: {json.dumps(json_output, indent=2)}", level="INFO")
-
-    # Check if the last transcription contains the phrase "clear context"
-    if json_output["transcriptions"]:
-        last_transcription = json_output["transcriptions"][-1]  # Get the last transcription
-        last_text = last_transcription["text"].lower()  # Make the text case-insensitive
-
-        if "clear context" in last_text:
-            log("Detected 'clear context' command. Clearing transcription context...", level="WARNING")
-            clear_context()
-
-
-
-def save_transcription_to_json(transcription_data):
-    """Saves transcription data to a JSON file with a timestamped filename."""
-    output_folder = os.getcwd()
-    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"transcriptions_{timestamp}.json"
-    output_path = os.path.join(output_folder, filename)
-
-    try:
-        with open(output_path, "w") as json_file:
-            json.dump(transcription_data, json_file, indent=4)
-        log(f"Transcription saved to {output_path}", level="SUCCESS")
-    except Exception as e:
-        log(f"Error saving transcription to JSON: {str(e)}", level="ERROR")
