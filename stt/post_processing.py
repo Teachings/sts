@@ -13,8 +13,8 @@ def invoke_after_transcription(json_output):
     # Assuming data is already validated and correct
     last_transcription = json_output['transcriptions'][-1]
     # print(f"Last transcription timestamp: {last_transcription['timestamp']}")
-    log(f"Producing message: {last_transcription['text']}", level="INFO", color="cyan")
-    produce_message(last_transcription['text'])
+    log(f"{last_transcription['text']}", level="INFO", color="yellow")
+    # produce_message(last_transcription['text'])
 
 
 def produce_message(message):

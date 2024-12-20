@@ -1,61 +1,73 @@
-# Wiki: Setting Up Speech-to-Text with VAD and Faster Whisper
+# **Wiki: Setting Up Speech-to-Text with VAD and Faster Whisper**
 
-## Introduction
-This project enables real-time speech-to-text transcription using Faster Whisper and voice activity detection (VAD). It detects when a user speaks, transcribes the speech, and continues recording without losing audio during transcription.
+## **Introduction**
+This project provides real-time speech-to-text transcription using Faster Whisper and voice activity detection (VAD). It efficiently detects speech, transcribes audio, and supports seamless real-time processing with optional Kafka-based post-processing.
 
-### Key Features
-- **Real-time Voice Activity Detection**: Automatically detects speech and pauses.
-- **Parallel Transcription**: Ensures transcription doesn't block recording.
-- **Cross-Device Compatibility**: Supports various audio devices.
+### **Key Features**
+- **Advanced Voice Activity Detection**: Detects speech and pauses with high accuracy using the Silero VAD model.
+- **Real-Time Parallel Processing**: Ensures recording and transcription run simultaneously without interruptions.
+- **Post-Processing Integration**: Supports custom actions after transcription, including Kafka-based text-to-speech (TTS) integration.
+- **Cross-Device Compatibility**: Works with various audio devices, including user-defined favorites.
 
 ---
 
-## Architecture Overview
+## **Architecture Overview**
 The application employs a **Producer-Consumer Model**:
 
 1. **Producer (Recording)**:
-   - Captures audio chunks in real-time from the microphone.
-   - Uses VAD to determine when the user is speaking.
-   - Sends detected speech audio chunks to a queue.
+   - Records audio chunks in real-time.
+   - Uses VAD to detect speech segments.
+   - Sends detected audio files to a processing queue.
 
 2. **Consumer (Transcription)**:
-   - Continuously processes audio chunks from the queue.
+   - Processes audio chunks from the queue.
    - Transcribes speech using Faster Whisper.
-   - Outputs transcription results incrementally.
+   - Outputs incremental and grouped transcription results.
 
-### High-Level Flow
-1. **Audio Input**: User selects a microphone.
+3. **Kafka Integration**:
+   - Transcription results can be sent to a Kafka topic.
+   - A Kafka consumer listens for messages on the topic and converts text to speech using a TTS API.
+
+### **High-Level Flow**
+1. **Audio Input**: User selects or auto-detects a microphone.
 2. **Voice Activity Detection**:
-   - Detects speech and pauses.
-   - Sends audio chunks with speech to a queue.
+   - Identifies speech and pauses.
+   - Saves speech segments to temporary files.
+   - Sends file paths to a queue for transcription.
 3. **Parallel Processing**:
-   - Recording and transcription run in separate threads.
-4. **Output**: Transcriptions are displayed incrementally in real-time.
+   - Recording and transcription occur in separate threads.
+4. **Post-Processing**:
+   - Transcription results are sent to Kafka for downstream applications like TTS.
 
 ---
 
-## Setup Instructions
+## **Setup Instructions**
 
-### Prerequisites
-1. **Hardware**:
-   - NVIDIA GPU with CUDA support (e.g., RTX 3090).
-   - Supported microphone (e.g., Elgato Wave XLR, Jabra SPEAK 410).
+### **Prerequisites**
 
-2. **Software**:
-   - **Operating System**: Ubuntu 20.04 or later.
-   - Python 3.8+.
-   - NVIDIA CUDA Toolkit and cuDNN.
+#### **Hardware**
+- NVIDIA GPU with CUDA support (e.g., RTX 3090 or higher recommended).
+- Supported microphone (e.g., Elgato Wave XLR, Jabra SPEAK 410).
 
-### Install CUDA and cuDNN
-Follow these steps to install CUDA Toolkit 12.6 and cuDNN:
+#### **Software**
+- **Operating System**: Ubuntu 20.04+ or Windows 10+.
+- Python 3.8+.
+- NVIDIA CUDA Toolkit and cuDNN.
 
-#### 1. Install CUDA
+---
+
+### **Installation Steps**
+
+#### 1. **Install CUDA and cuDNN**
+Follow these steps to install the latest CUDA Toolkit and cuDNN:
+
+##### **CUDA Installation**
 ```bash
 wget https://developer.download.nvidia.com/compute/cuda/12.6.3/local_installers/cuda_12.6.3_560.35.05_linux.run
 sudo sh cuda_12.6.3_560.35.05_linux.run
 ```
 
-#### 2. Install cuDNN
+##### **cuDNN Installation**
 ```bash
 wget https://developer.download.nvidia.com/compute/cudnn/9.6.0/local_installers/cudnn-local-repo-ubuntu2204-9.6.0_1.0-1_amd64.deb
 sudo dpkg -i cudnn-local-repo-ubuntu2204-9.6.0_1.0-1_amd64.deb
@@ -64,78 +76,89 @@ sudo apt-get update
 sudo apt-get -y install cudnn
 ```
 
-### Install Python Dependencies
-For easier dependency management, create a `requirements.txt` file with the following content:
-```text
-torch
-torchaudio
-sounddevice
-scipy
-faster-whisper
-termcolor
+#### 2. **Clone the Repository**
+```bash
+git clone https://github.com/Teachings/sts.git
+cd sts
 ```
 
-Then install the dependencies using:
+#### 3. **Install Python Dependencies**
+
+Install the dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-### Clone the Project
-```bash
-git clone https://github.com/your-repository-name.git
-cd your-repository-name
-```
+#### 4. **Run the Application**
+1. Start the transcription application:
+   ```bash
+   python stt/main.py
+   ```
+2. Start the Kafka consumer for text-to-speech:
+   ```bash
+   python kafka_consumer.py
+   ```
+3. Select a microphone from the listed devices when prompted.
+4. Speak into the microphone to see real-time transcription and hear the synthesized speech.
 
-Place the `requirements.txt` file in the root of the cloned repository. To install dependencies, use:
+#### 5. **Setup Kafka**
+Navigate to the `kafka` directory and use `docker-compose` to start Kafka services:
 ```bash
-pip install -r requirements.txt
+cd kafka
+docker-compose up -d
 ```
-
-### Run the Application
-1. Start the application:
-```bash
-python speech_to_text_vad.py
-```
-2. Select the microphone device when prompted.
-3. Speak into the microphone to see real-time transcription.
 
 ---
 
-## Using on a Different Computer
-To use this project on another system:
+## **Using on a Different System**
 
-1. **Check GPU and CUDA Compatibility**:
-   - Ensure the target system has a CUDA-enabled NVIDIA GPU.
-   - Install the compatible CUDA Toolkit and cuDNN version.
+1. **Verify GPU and CUDA Compatibility**:
+   - Ensure the system has a CUDA-enabled NVIDIA GPU.
+   - Install compatible versions of CUDA Toolkit and cuDNN.
 
 2. **Clone the Repository**:
    - Clone the project to the target system.
    - Install dependencies using `pip`.
 
-3. **Update Audio Device IDs**:
-   - Use `sounddevice.query_devices()` to list available audio devices.
-   - Update the script if specific devices are required.
+3. **Configure Audio Devices**:
+   - Use `sounddevice.query_devices()` to list available microphones.
+   - Modify `config.json` to specify preferred devices if necessary.
 
-4. **Run the Script**:
-   - Execute `python speech_to_text_vad.py` and follow the prompts.
+4. **Run the Application**:
+   - Start the transcription and Kafka consumer as described above.
 
 ---
 
-## Troubleshooting
+## **Troubleshooting**
 
-### Common Issues
+### **Common Issues**
 1. **CUDA Errors**:
-   - Ensure CUDA and cuDNN are installed correctly.
-   - Check if the correct `compute_type` (e.g., `float16`) is being used for the GPU.
+   - Verify that CUDA and cuDNN are correctly installed.
+   - Ensure the Faster Whisper model is configured to use `float16` for GPU acceleration.
 
 2. **No Audio Devices Found**:
-   - Verify the microphone is connected and detected by the operating system.
-   - Use `sounddevice.query_devices()` to list devices.
+   - Confirm that the microphone is properly connected and recognized by the OS.
+   - Run `sounddevice.query_devices()` to check available devices.
 
-3. **Slow Transcription**:
-   - Ensure the GPU is being utilized by the Faster Whisper model.
-   - Check for conflicting CPU usage.
+3. **Kafka Connection Issues**:
+   - Ensure that the Kafka broker is running and accessible.
+   - Verify that the `BROKER` and `TOPIC_NAME` in `kafka_consumer.py` match the Kafka setup.
 
-### Debugging Tips
-- Run `nvidia-smi` to verify GPU utilization.
-- Use logging in the script to pinpoint errors.
+4. **Slow Transcription**:
+   - Ensure that the application is utilizing the GPU.
+   - Use `nvidia-smi` to monitor GPU utilization.
+
+### **Debugging Tips**
+- Check logs for detailed error messages.
+- Use `nvidia-smi` to ensure GPU resources are allocated to the application.
+- Verify that the correct microphone is selected.
+
+---
+
+## **Key Updates**
+- Added a `kafka` folder with:
+  - **`docker-compose.yaml`**: Automates Kafka setup using Docker.
+  - **`kafka_consumer.py`**: Consumes transcription messages and converts them to speech using a TTS API.
+- Enhanced integration for post-processing with Kafka.
+- Refactored to support `python stt/main.py` for application startup.
+- Grouped transcriptions for better readability.

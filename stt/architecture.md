@@ -1,10 +1,12 @@
 ## **Project Overview**
 
-This project performs **real-time audio transcription** with the following features:
-1. **Voice Activity Detection (VAD)**: Detects speech in real-time using the **Silero VAD** model.
-2. **Audio Recording**: Records audio chunks, detects speech pauses, and alternates between two temporary files.
-3. **Speech Transcription**: Transcribes detected speech in real-time using the **Faster Whisper** model.
-4. **Graceful Shutdown**: Ensures clean termination when interrupted (e.g., `Ctrl+C`).
+This project performs **real-time audio transcription** with advanced functionality, ensuring seamless integration and usability. Key features include:
+
+1. **Voice Activity Detection (VAD)**: Employs the **Silero VAD** model to detect speech in real-time with minimal latency.
+2. **Audio Recording**: Utilizes efficient recording techniques with double-buffering and pause detection for uninterrupted processing.
+3. **Speech Transcription**: Transcribes detected speech using the **Faster Whisper** model, with real-time updates.
+4. **Post-Processing**: Supports customizable post-transcription handling, including integration with external systems like Kafka.
+5. **Graceful Shutdown**: Ensures clean termination of all processes on interruption (e.g., `Ctrl+C`).
 
 ---
 
@@ -13,10 +15,12 @@ This project performs **real-time audio transcription** with the following featu
 stt/
 ├── __init__.py          # Marks this directory as a Python package.
 ├── main.py              # Entry point of the application.
+├── models.py            # Defines data models for transcriptions.
+├── post_processing.py   # Implements actions triggered after transcription.
 ├── vad.py               # Handles audio recording and voice activity detection.
-├── transcriber.py       # Handles speech transcription with Faster Whisper.
-├── audio_utils.py       # Provides utilities for audio device management.
-├── helpers.py           # Contains logging and utility functions.
+├── transcriber.py       # Performs speech transcription using Faster Whisper.
+├── audio_utils.py       # Manages audio devices and sampling rates.
+├── helpers.py           # Provides logging, configuration, and utility functions.
 ```
 
 ---
@@ -24,149 +28,98 @@ stt/
 ### **1. main.py**
 
 #### **Purpose**
-- The main entry point of the application.
-- Coordinates between the audio recording (producer) and transcription (consumer) threads.
-- Handles graceful shutdown using signal handling and thread management.
+Acts as the central coordinator of the application:
+- Manages audio device selection and configuration.
+- Initializes the VAD and transcription components.
+- Spawns and supervises producer (audio recording) and consumer (transcription) threads.
+- Ensures smooth shutdown through signal handling.
 
-#### **Key Methods**
-```python
-def main():
-    # Registers signal handlers (Ctrl+C) for shutdown.
-    # Lists available audio devices and lets the user select one.
-    # Initializes the VAD model.
-    # Creates a queue to communicate between recording and transcription threads.
-    # Spawns and manages producer and consumer threads.
-    # Ensures graceful shutdown and cleanup of resources.
-```
-
-#### **How It Works**
-1. **User Input**: Lists audio devices and prompts the user to select one.
-2. **VAD Initialization**: Loads the Silero VAD model.
-3. **Thread Setup**:
-   - **Producer Thread**: Records audio chunks and sends filenames to the queue.
-   - **Consumer Thread**: Transcribes audio files from the queue.
-4. **Signal Handling**: Handles `Ctrl+C` (SIGINT) to stop threads and clean up resources.
+#### **Key Highlights**
+- Lists available audio devices and allows selection or auto-detection of favorites.
+- Configures sampling rates dynamically based on device capabilities.
+- Implements threading to enable real-time recording and transcription.
 
 ---
 
 ### **2. vad.py**
 
 #### **Purpose**
-- Records audio in real-time using **SoundDevice**.
-- Detects speech using **Silero VAD** and saves detected speech to temporary files.
-- Alternates between two temporary files (`temp_audio_1.wav` and `temp_audio_2.wav`) to avoid blocking the recording process.
-- Pushes the filenames to the queue for transcription.
+- Manages audio recording in real-time with **SoundDevice**.
+- Detects speech using **Silero VAD** and dynamically alternates between two temporary files (`temp_audio_1.wav`, `temp_audio_2.wav`) to minimize recording delays.
+- Communicates detected speech segments to the transcription queue.
 
-#### **Key Methods**
-```python
-def load_vad_model():
-    # Loads the Silero VAD model from Torch Hub.
-    # Returns the model and utility functions for voice activity detection.
-
-def record_audio_stream(device_id, sample_rate, vad_model, vad_utils, audio_queue, shutdown_event):
-    # Continuously records audio in chunks.
-    # Detects voice activity and saves speech to temporary files.
-    # Alternates between two temporary files and signals transcription via the queue.
-    # Stops cleanly when shutdown_event is set.
-```
-
-#### **How It Works**
-1. **VAD Initialization**: Loads the Silero VAD model.
-2. **Recording Loop**:
-   - Continuously records audio in 1-second chunks.
-   - Detects voice activity using VAD.
-   - Accumulates audio until speech pauses for 2 seconds (configurable).
-   - Saves audio to a temporary file (`temp_audio_1.wav` or `temp_audio_2.wav`).
-   - Pushes the filename to the queue for transcription.
-3. **Graceful Shutdown**: Stops recording when `shutdown_event` is set and deletes temporary files.
+#### **Enhancements**
+- Double-buffering ensures efficient file handling without blocking the recording process.
+- Configurable pause detection threshold (default: 2 seconds) for capturing complete speech segments.
 
 ---
 
 ### **3. transcriber.py**
 
 #### **Purpose**
-- Transcribes audio files generated by the producer thread using the **Faster Whisper** model.
-- Handles transcription asynchronously by consuming filenames from the queue.
-- Displays both **current transcription** and **full transcription**.
+- Transcribes audio files using **Faster Whisper**.
+- Supports grouped transcription for cohesive and context-aware results.
+- Provides real-time updates for both current and cumulative transcriptions.
 
-#### **Key Methods**
-```python
-def transcribe_audio_stream(audio_queue, sample_rate, model_name="base.en", device="cuda", shutdown_event=None):
-    # Initializes the Faster Whisper model.
-    # Continuously consumes filenames from the queue and transcribes the audio files.
-    # Displays current and full transcriptions in real-time.
-    # Stops cleanly when shutdown_event is set or the queue is empty.
-```
-
-#### **How It Works**
-1. **Model Initialization**: Loads the Faster Whisper model.
-2. **Transcription Loop**:
-   - Consumes filenames from the queue.
-   - Transcribes the corresponding audio file.
-   - Appends the transcription to a growing list and displays it:
-     - **Current Transcription**: Latest audio segment.
-     - **Full Transcription**: Cumulative text.
-3. **Graceful Shutdown**: Stops when `shutdown_event` is set or the queue signals termination.
+#### **New Features**
+- Groups transcriptions based on configurable time gaps (default: 60 seconds).
+- Integrates customizable post-processing pipelines, enabling seamless integration with downstream systems.
 
 ---
 
-### **4. audio_utils.py**
+### **4. post_processing.py**
 
 #### **Purpose**
-- Provides utilities for managing audio devices.
-- Lists available devices and retrieves the sampling rate of the selected device.
+- Executes user-defined actions after each transcription.
+- Current implementation includes logging and sending messages to Kafka for further processing.
 
-#### **Key Methods**
-```python
-def list_audio_devices():
-    # Lists audio devices filtered by specific criteria (e.g., Elgato, Jabra).
-
-def get_device_sampling_rate(device_id):
-    # Fetches the default sampling rate for a given audio device.
-```
-
-#### **How It Works**
-1. **Device Filtering**: Lists only relevant audio devices (e.g., Elgato Wave XLR, Jabra SPEAK 410 USB).
-2. **Sampling Rate Retrieval**: Gets the sampling rate for the selected device to ensure compatibility with the VAD model.
+#### **Key Highlights**
+- Configurable Kafka integration with `broker` and `topic` settings loaded from `config.json`.
+- Error-handling mechanisms for robust message delivery.
 
 ---
 
-### **5. helpers.py**
+### **5. audio_utils.py**
 
 #### **Purpose**
-- Provides utility functions for structured logging and output formatting.
+- Provides utilities for audio device management, including:
+  - Filtering devices based on user preferences.
+  - Fetching device-specific sampling rates for optimal VAD performance.
 
-#### **Key Methods**
-```python
-def log(message, level="INFO", color="cyan"):
-    # Logs messages with a timestamp, log level (INFO, WARNING, ERROR, SUCCESS), and color.
-```
+#### **Key Highlights**
+- Automatically selects favorite microphones when defined.
+- Ensures compatibility by dynamically adjusting sampling rates.
 
-#### **How It Works**
-1. **Timestamped Logging**: Adds timestamps to log messages.
-2. **Log Levels**: Supports different levels (INFO, WARNING, ERROR, SUCCESS) with corresponding colors.
-3. **Formatted Output**: Ensures consistent and user-friendly terminal output.
+---
+
+### **6. helpers.py**
+
+#### **Purpose**
+- Provides utility functions for structured logging, configuration management, and output formatting.
+- Supports error-tolerant configuration loading and structured transcription saving.
+
+#### **Enhancements**
+- Logs transcription history to timestamped JSON files in a dedicated folder.
+- Displays aggregated transcriptions grouped by timestamps for clarity.
 
 ---
 
 ### **How It All Works Together**
 
 1. **Startup (`main.py`)**:
-   - Lists audio devices and initializes the VAD and transcription threads.
+   - Initializes the application and sets up audio device, VAD, and transcription threads.
 
-2. **Producer Thread (`vad.py`)**:
-   - Records audio chunks.
-   - Uses Silero VAD to detect speech.
-   - Saves speech to temporary files and signals transcription via the queue.
+2. **Recording (`vad.py`)**:
+   - Continuously records audio, detects voice activity, and saves segments for transcription.
 
-3. **Consumer Thread (`transcriber.py`)**:
-   - Consumes filenames from the queue.
-   - Uses Faster Whisper to transcribe audio files.
-   - Displays current and cumulative transcriptions.
+3. **Transcription (`transcriber.py`)**:
+   - Processes audio files, generates transcription text, and groups results contextually.
 
-4. **Utilities (`audio_utils.py` and `helpers.py`)**:
-   - Manage audio devices and provide structured logging.
+4. **Post-Processing (`post_processing.py`)**:
+   - Handles user-defined actions, such as integrating with external systems.
 
-5. **Shutdown**:
-   - `Ctrl+C` sets the `shutdown_event` to stop threads.
-   - Temporary files are deleted, and resources are released.
+5. **Utilities (`audio_utils.py` and `helpers.py`)**:
+   - Manage audio devices, logging, and structured data storage.
+
+6. **Shutdown**:
+   - Safely terminates threads, clears queues, and cleans up temporary files.

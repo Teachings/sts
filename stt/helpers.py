@@ -18,12 +18,21 @@ def load_config():
         }
 
 
-def log(message, level="INFO", color="cyan"):
+def log(message, level="INFO", color=None):
     """Log messages with timestamp and optional color."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     levels = {"INFO": "cyan", "WARNING": "yellow", "ERROR": "red", "SUCCESS": "green"}
-    level_color = levels.get(level.upper(), color)
-    print(colored(f"[{timestamp}] [{level}] {message}", level_color))
+    
+    # Convert level to uppercase to ensure case-insensitivity
+    level_upper = level.upper()
+    
+    # Determine the color to use: if a color is provided, use it; otherwise, use the default for the level
+    if color:
+        level_color = color
+    else:
+        level_color = levels.get(level_upper, "cyan")  # Default to cyan if level is unknown
+    
+    print(colored(f"[{timestamp}] [{level_upper}] {message}", level_color))
 
 def clear_context(transcription_data: TranscriptionData, current_transcription: list):
     """
@@ -45,8 +54,8 @@ def clear_context(transcription_data: TranscriptionData, current_transcription: 
 
 def save_transcription_to_json(transcription_data: TranscriptionData):
     """Saves transcription data to a JSON file with a timestamped filename in a 'transcription_history' folder one level up."""
-    # Get the parent directory of the current working directory
-    output_folder = os.path.join(os.getcwd(), '..')
+    # Get the current working directory
+    output_folder = os.path.join(os.getcwd(), '.')
     
     # Define the path for the transcription_history folder
     transcription_history_folder = os.path.join(output_folder, 'transcription_history')
@@ -74,9 +83,11 @@ def save_transcription_to_json(transcription_data: TranscriptionData):
 
 def display_transcriptions(transcriptions: list[TranscriptionSegment]):
     """Displays aggregated transcriptions grouped by timestamps in green."""
-    log("Aggregated Transcriptions:", level="SUCCESS")
+    log("Aggregated Transcriptions:", level="INFO")
     for entry in transcriptions:
-        log(f"[{entry.timestamp}] {entry.text}", level="INFO", color="green")
+        # log(f"[{entry.timestamp}] {entry.text}", level="INFO", color="green")
+        log(f"{entry.text}", level="INFO", color="green")
+
 
 def generate_json(transcription_data: TranscriptionData, current_transcription: list[TranscriptionSegment]):
     """
