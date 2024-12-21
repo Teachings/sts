@@ -1,5 +1,4 @@
 import json
-import yaml
 import signal
 import sys
 from kafka import KafkaConsumer, KafkaProducer
@@ -37,13 +36,81 @@ class AgentDecision(BaseModel):
 # Decision Agent class
 class DecisionAgent:
     def __init__(self):
-        with open('prompts.yml', 'r') as file:
-            self.system_prompt = yaml.safe_load(file)['intent_agent_system_prompt']
+        self.system_prompt = """
+        You are a decision-making agent reviewing transcriptions from a real-time voice transcription system. 
+        Your task is to determine whether the user's input requires action by downstream systems. 
+        If action is required, categorize the intent, provide reasoning, and suggest a refined prompt.
+
+        Output JSON format:
+        {
+            "action_required_decision": "true/false",
+            "reasoning": "Explanation of the decision.",
+            "categorization": "<math_query|web_search|brainstorm_ideas|home_automation|programming_help|general_help>",
+            "refined_prompt": "Refined version of the query (if applicable)."
+        }
+
+        Examples:
+        Input: "Can you help me out with a calculation for 523 plus 763?"
+        Output: {
+            "action_required_decision": "true",
+            "reasoning": "User wants to add two numbers and needs help of downstream system to generate this for them.",
+            "categorization": "math_query",
+            "refined_prompt": "What is 523 + 763?"
+        }
+
+        Input: "Turn off the lights in the living room."
+        Output: {
+            "action_required_decision": "true",
+            "reasoning": "The user is issuing a command to control smart home devices, requiring an actionable response.",
+            "categorization": "home_automation",
+            "refined_prompt": "Turn off the living room lights."
+        }
+
+        Input: "Who won the 2024 FIFA World Cup?"
+        Output: {
+            "action_required_decision": "true",
+            "reasoning": "The user is seeking information that can be retrieved via a web search.",
+            "categorization": "web_search",
+            "refined_prompt": "Find out who won the 2024 FIFA World Cup."
+        }
+
+        Input: "It's such a nice day today, isn't it?"
+        Output: {
+            "action_required_decision": "false",
+            "reasoning": "The user is making a casual comment that does not require any actionable response.",
+            "categorization": null,
+            "refined_prompt": null
+        }
+
+        Input: "How do I write a Python script to read a CSV file?"
+        Output: {
+            "action_required_decision": "true",
+            "reasoning": "The user is seeking assistance with a programming-related question, requiring action by a downstream system.",
+            "categorization": "programming_help",
+            "refined_prompt": "Write a Python script to read a CSV file."
+        }
+
+        Input: "Can you give me some ideas for my daughter's birthday party?"
+        Output: {
+            "action_required_decision": "true",
+            "reasoning": "The user is asking for creative suggestions, which requires downstream brainstorming action.",
+            "categorization": "brainstorm_ideas",
+            "refined_prompt": "Suggest ideas for a birthday party for my daughter."
+        }
+
+        Input: "How do I reset my password for my email account?"
+        Output: {
+            "action_required_decision": "true",
+            "reasoning": "The user is asking for help with resetting their email password, which requires downstream action.",
+            "categorization": "general_help",
+            "refined_prompt": "Guide me on how to reset my email password."
+        }
+
+        Now process the following transcription:
+        """
 
     def evaluate_transcription(self, transcription: str) -> AgentDecision:
         """Interact with Ollama server to decide if action is required."""
-        ollama_prompt = f"{self.system_prompt}{transcription}"
-
         response = client.chat(
             messages=[
                 {"role": "system", "content": self.system_prompt.strip()},
