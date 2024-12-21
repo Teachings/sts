@@ -14,14 +14,14 @@ def invoke_after_transcription(json_output):
     last_transcription = json_output['transcriptions'][-1]
     # print(f"Last transcription timestamp: {last_transcription['timestamp']}")
     log(f"{last_transcription['text']}", level="INFO", color="yellow")
-    # produce_message(last_transcription['text'])
+    produce_message(last_transcription['text'])
 
 
 def produce_message(message):
 
     config = load_config()
     BROKER = config.get("broker", [])
-    TOPIC_NAME = config.get("topic", [])
+    TOPIC_NAME = config.get("topic_transcriptions_all", [])
 
     # Kafka Configuration
     # BROKER = "localhost:9092"  # Replace with your broker's address if not localhost

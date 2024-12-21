@@ -1,8 +1,10 @@
 {
     "favorite_microphones": [
-        "Elgato Wave XLR"
+        "Elgato Wave XLR",
+        "Jabra SPEAK 410"
     ],
     "time_gap_threshold": 1,
+    "end_speech_delay": 2,
     "broker": "localhost:9092",
-    "topic": "text_to_speech"
+    "topic_transcriptions_all": "transcriptions.all"
 }

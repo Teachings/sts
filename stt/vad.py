@@ -4,7 +4,7 @@ import numpy as np
 import sounddevice as sd
 from scipy.io.wavfile import write
 import torch
-from helpers import log
+from helpers import log, load_config
 
 
 def load_vad_model():
@@ -20,7 +20,7 @@ def record_audio_stream(device_id, sample_rate, vad_model, vad_utils, audio_queu
     """Records audio in chunks using double-buffering and detects voice activity."""
     buffer_duration = 1  # seconds
     chunk_size = int(sample_rate * buffer_duration)
-    end_speech_delay = 2  # seconds to wait before concluding speech ended
+    end_speech_delay = load_config().get("end_speech_delay", 5)  # seconds to wait before concluding speech ended
     last_voice_time = None
     accumulated_audio = []
 
