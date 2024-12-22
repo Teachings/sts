@@ -11,9 +11,10 @@ class TranscriptionProcessor(BaseKafkaProcessor):
     def __init__(self, config):
         super().__init__(config)
         kafka_config = config["kafka"]
+        self.consumer_group_id = kafka_config["consumer_groups"]["transcription"]
 
-        self.input_topic = kafka_config["transcription_input_topic"]
-        self.output_topic = kafka_config["transcription_output_topic"]
+        self.input_topic = kafka_config["transcriptions_topic"]
+        self.output_topic = kafka_config["actions_topic"]
 
         # Initialize Kafka
         self.init_consumer(self.input_topic)

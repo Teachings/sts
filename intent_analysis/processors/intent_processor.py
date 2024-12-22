@@ -11,8 +11,9 @@ class IntentProcessor(BaseKafkaProcessor):
     def __init__(self, config):
         super().__init__(config)
         kafka_config = config["kafka"]
+        self.consumer_group_id = kafka_config["consumer_groups"]["intent"]
 
-        self.input_topic = kafka_config["intent_input_topic"]
+        self.input_topic = kafka_config["actions_topic"]
         self.tts_config = config["text_to_speech"]
 
         # Initialize Kafka (only consumer needed)

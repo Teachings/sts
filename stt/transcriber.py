@@ -47,14 +47,15 @@ def transcribe_audio_stream(audio_queue, sample_rate, model_name="base.en", devi
                     transcription_data.transcriptions.append(
                         TranscriptionSegment(
                             timestamp=current_transcription[0].timestamp,
-                            text=" ".join(segment.text for segment in current_transcription)
+                            text=" ".join(segment.text for segment in current_transcription),
+                            user=config.get("user", "default")
                         )
                     )
                 current_transcription = []  # Start a new group
 
             # Add the new segment to the current transcription group
             current_transcription.append(
-                TranscriptionSegment(timestamp=formatted_time, text=current_text)
+                TranscriptionSegment(timestamp=formatted_time, text=current_text, user=config.get("user", "default"))
             )
 
             last_timestamp = end_time
@@ -76,7 +77,8 @@ def transcribe_audio_stream(audio_queue, sample_rate, model_name="base.en", devi
         transcription_data.transcriptions.append(
             TranscriptionSegment(
                 timestamp=current_transcription[0].timestamp,
-                text=" ".join(segment.text for segment in current_transcription)
+                text=" ".join(segment.text for segment in current_transcription),
+                user=config.get("user", "default")
             )
         )
     save_transcription_to_json(transcription_data)

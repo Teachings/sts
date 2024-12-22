@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   kafka:
     image: apache/kafka:latest
@@ -20,3 +19,37 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_NUM_PARTITIONS: 3
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
+
+  # kafka-ui:
+  #   image: provectuslabs/kafka-ui:latest
+  #   container_name: kafka-ui
+  #   ports:
+  #     - "8081:8080"
+  #   environment:
+  #     KAFKA_CLUSTERS_0_NAME: localhost
+  #     KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: localhost:9092
+  #   depends_on:
+  #     - kafka
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_DB: transcriptsdb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  
+  adminer:
+    image: adminer
+    container_name: adminer
+    depends_on:
+      - postgres
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:

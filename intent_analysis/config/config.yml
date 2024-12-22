@@ -3,9 +3,26 @@ kafka:
   consumer:
     group_id: "agent_group"
     auto_offset_reset: "latest"
-  transcription_input_topic: "transcriptions.all"
-  transcription_output_topic: "transcriptions.agent.action"
-  intent_input_topic: "transcriptions.agent.action"
+
+  consumer_groups:
+    real_time: "real_time_consumer_group"
+    persistence: "persistence_consumer_group"
+    session: "session_consumer_group"
+    aggregator: "aggregator_consumer_group"
+    transcription: "transcription_consumer_group"
+    intent: "intent_consumer_group"
+
+  transcriptions_topic: "transcriptions.all"
+  actions_topic: "transcriptions.agent.action"
+  sessions_management_topic: "sessions.management"
+  aggregations_request_topic: "aggregations.request"
+
+db:
+  host: "localhost"
+  port: 5432
+  database: "transcriptsdb"
+  user: "user"
+  password: "password"
 
 ollama:
   url: "http://localhost:11434"

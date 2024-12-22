@@ -2,7 +2,7 @@ from kafka import KafkaProducer
 
 # Kafka Configuration
 BROKER = "localhost:9092"  # Replace with your broker's address if not localhost
-TOPIC_NAME = "text_to_speech"
+TOPIC_NAME = "transcriptions.all"
 
 def produce_message(message):
     # Initialize Kafka Producer

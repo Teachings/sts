@@ -8,3 +8,6 @@ kafka-python
 pydantic
 pydub
 ollama
+psycopg2-binary
+requests
+PyYAML
