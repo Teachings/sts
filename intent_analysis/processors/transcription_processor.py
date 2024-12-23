@@ -1,3 +1,4 @@
+import json
 from core.base_processor import BaseKafkaProcessor
 from core.logger import info, warning, error, debug
 from agents.decision_agent import DecisionAgent, AgentDecision
@@ -29,7 +30,12 @@ class TranscriptionProcessor(BaseKafkaProcessor):
             if not self.running:
                 break
 
-            transcription = message.value
+            raw_str = message.value
+            payload = json.loads(raw_str)
+            user_id = payload.get("user", "UnknownUser")
+            transcription = payload.get("text", "")
+            timestamp = payload.get("timestamp", "")
+            
             debug(f"Received transcription: {transcription}")
 
             try:

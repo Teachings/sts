@@ -23,24 +23,19 @@ class PersistenceProcessor(BaseKafkaProcessor):
             if not self.running:
                 break
 
-            transcription = message.value
+            raw_str = message.value
+            payload = json.loads(raw_str)
+            user_id = payload.get("user", "UnknownUser")
+            transcription = payload.get("text", "")
+            timestamp = payload.get("timestamp", "")
             debug(f"PersistenceProcessor received: {transcription}")
 
             try:
-                # For simplicity, assume user_id is embedded or we use some default
-                # Example: "USER123: Hello, how are you?"
-                # We'll parse user_id from the string or set a default
-                parts = transcription.split(":", 1)
-                if len(parts) == 2:
-                    user_id, text = parts[0].strip(), parts[1].strip()
-                else:
-                    user_id, text = "UnknownUser", transcription
-
                 insert_sql = """
                     INSERT INTO transcriptions (user_id, text) 
                     VALUES (%s, %s)
                 """
-                self.db.execute(insert_sql, (user_id, text))
+                self.db.execute(insert_sql, (user_id, transcription))
                 debug("PersistenceProcessor: Inserted into DB")
             except Exception as e:
                 error(f"PersistenceProcessor Error: {e}")

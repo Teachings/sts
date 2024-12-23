@@ -14,7 +14,7 @@ def invoke_after_transcription(json_output):
     last_transcription = json_output['transcriptions'][-1]
     # print(f"Last transcription timestamp: {last_transcription['timestamp']}")
     log(f"{last_transcription['text']}", level="INFO", color="yellow")
-    produce_message(last_transcription['text'])
+    produce_message(last_transcription)
 
 
 def produce_message(message):
@@ -30,7 +30,7 @@ def produce_message(message):
     producer = KafkaProducer(bootstrap_servers=BROKER)   
     try:
         # Send message to the topic
-        producer.send(TOPIC_NAME, value=message.encode("utf-8"))
+        producer.send(TOPIC_NAME, value=json.dumps(message).encode("utf-8"))
         log(f"Message sent to topic '{TOPIC_NAME}': {message}", level="INFO", color="green")
     except Exception as e:
         log(f"Failed to send message to topic '{TOPIC_NAME}': {message}", level="ERROR", color="red")

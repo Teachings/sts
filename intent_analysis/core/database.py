@@ -79,7 +79,9 @@ def initialize_database(db: Database):
         start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         end_time TIMESTAMP,
         active BOOLEAN DEFAULT TRUE,
-        summary TEXT
+        summary TEXT,
+        session_creation_reasoning TEXT,
+        session_destroy_reasoning TEXT
     );
     """
 

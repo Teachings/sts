@@ -98,7 +98,8 @@ def generate_json(transcription_data: TranscriptionData, current_transcription: 
         "transcriptions": transcription_data.transcriptions + [
             {
                 "timestamp": current_transcription[0].timestamp,
-                "text": " ".join(item.text for item in current_transcription)
+                "text": " ".join(item.text for item in current_transcription),
+                "user": load_config().get("user")
             }
         ]
     }

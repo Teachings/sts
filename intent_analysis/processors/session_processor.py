@@ -1,7 +1,10 @@
 import json
+import datetime
 from core.base_processor import BaseKafkaProcessor
 from core.logger import info, debug, error
 from core.database import Database
+
+SESSION_TIMEOUT_HOURS = 4
 
 class SessionProcessor(BaseKafkaProcessor):
     def __init__(self, config):
@@ -29,29 +32,95 @@ class SessionProcessor(BaseKafkaProcessor):
 
             try:
                 data = json.loads(msg_str)
-                command = data.get("command")  # e.g., "start_session", "stop_session"
+                # e.g. data = {
+                #    "session_decision": "CREATE" | "DESTROY" | "NO_ACTION",
+                #    "reasoning": "...",
+                #    "user_id": "mukul"
+                # }
+                session_decision = data.get("session_decision")
+                reasoning = data.get("reasoning")
                 user_id = data.get("user_id")
 
-                if command == "start_session":
-                    # Create a new row in sessions
-                    insert_sql = """
-                        INSERT INTO sessions (user_id) VALUES (%s)
-                        RETURNING id
-                    """
-                    result = self.db.fetchall(insert_sql, (user_id,))
-                    new_session_id = result[0]["id"]
-                    info(f"SessionProcessor: Started new session {new_session_id} for {user_id}")
+                if session_decision == "NO_ACTION":
+                    # Do nothing, just ignore
+                    debug("SessionProcessor: NO_ACTION received, ignoring.")
+                    continue
 
-                elif command == "stop_session":
-                    session_id = data.get("session_id")
+                # Check if user has an active session
+                active_session = self.db.fetchone("""
+                    SELECT id, start_time 
+                    FROM sessions 
+                    WHERE user_id = %s AND active = TRUE
+                    ORDER BY id DESC
+                    LIMIT 1
+                """, (user_id,))
+
+                if session_decision == "CREATE":
+                    # If there's an active session, see if it's older than 4 hours
+                    if active_session:
+                        # Calculate how long it's been active
+                        start_time = active_session["start_time"]
+                        now = datetime.datetime.utcnow()
+                        # Ensure your DB is storing times in UTC or convert accordingly
+                        delta = now - start_time
+                        hours_diff = delta.total_seconds() / 3600
+
+                        if hours_diff < SESSION_TIMEOUT_HOURS:
+                            # Already have an active session less than 4 hours old
+                            debug(f"SessionProcessor: Session already active (id={active_session['id']}) < 4 hours. Skipping creation.")
+                            continue
+                        else:
+                            # Auto-destroy the old session and create a new one
+                            session_id = active_session["id"]
+                            self.auto_close_session(session_id)
+
+                    # Create new session
+                    self.db.execute("""
+                        INSERT INTO sessions (user_id, session_creation_reasoning)
+                        VALUES (%s, %s)
+                    """, (user_id, reasoning))
+
+                    # Fetch the newly created session ID
+                    new_session = self.db.fetchone("""
+                        SELECT id
+                        FROM sessions
+                        WHERE user_id = %s
+                        ORDER BY id DESC
+                        LIMIT 1
+                    """, (user_id,))
+                    new_session_id = new_session["id"]
+                    info(f"SessionProcessor: Created new session {new_session_id} for {user_id}")
+
+                elif session_decision == "DESTROY":
+                    # If no active session, do nothing
+                    if not active_session:
+                        debug(f"SessionProcessor: No active session to destroy for user {user_id}, ignoring.")
+                        continue
+
+                    session_id = active_session["id"]
                     # Mark session as ended
-                    update_sql = """
-                        UPDATE sessions 
-                        SET end_time = CURRENT_TIMESTAMP, active = FALSE
+                    self.db.execute("""
+                        UPDATE sessions
+                        SET end_time = CURRENT_TIMESTAMP,
+                            active = FALSE,
+                            session_destroy_reasoning = %s
+                        WHERE id = %s
+                    """, (reasoning, session_id))
+
+                    info(f"SessionProcessor: Stopped session {session_id} for user {user_id}")
+
+                    #debug to cehck session start and end time
+                    session_sql = """
+                        SELECT start_time, end_time FROM sessions
                         WHERE id = %s
                     """
-                    self.db.execute(update_sql, (session_id,))
-                    info(f"SessionProcessor: Stopped session {session_id}")
+                    session_row = self.db.fetchone(session_sql, (session_id,))
+                    if not session_row:
+                        error(f"AggregatorProcessor: No session found with id {session_id}")
+                        continue
+                    start_time = session_row["start_time"]
+                    end_time = session_row["end_time"]
+                    info(f"Start Time: {start_time} and end time is {end_time} for session {session_id}")
 
                     # Trigger aggregator
                     agg_msg = {"session_id": session_id, "user_id": user_id}
@@ -62,3 +131,17 @@ class SessionProcessor(BaseKafkaProcessor):
                 error(f"SessionProcessor Error: {e}")
 
         self.shutdown()
+
+    def auto_close_session(self, session_id: int):
+        """
+        Utility to end a session automatically due to timeout
+        (in case user forgot to explicitly destroy it).
+        """
+        self.db.execute("""
+            UPDATE sessions
+            SET end_time = CURRENT_TIMESTAMP,
+                active = FALSE,
+                session_destroy_reasoning = 'Timed out after 4 hours of inactivity'
+            WHERE id = %s
+        """, (session_id,))
+        info(f"SessionProcessor: Auto-closed old session {session_id}")
