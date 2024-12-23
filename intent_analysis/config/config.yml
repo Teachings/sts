@@ -36,3 +36,6 @@ text_to_speech:
   default_voice: "alloy"
   default_speed: 0.75
   response_format: "mp3"
+
+app:
+  voice_session_timeout_hours: 1

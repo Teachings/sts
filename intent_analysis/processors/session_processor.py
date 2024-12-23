@@ -1,16 +1,17 @@
 import json
-import datetime
+import datetime, time
 from core.base_processor import BaseKafkaProcessor
 from core.logger import info, debug, error
 from core.database import Database
-
-SESSION_TIMEOUT_HOURS = 4
 
 class SessionProcessor(BaseKafkaProcessor):
     def __init__(self, config):
         super().__init__(config)
         kafka_config = config["kafka"]
         db_config = config["db"]
+        app_config = config["app"]
+        
+        self.voice_session_timeout_hours = app_config["voice_session_timeout_hours"]
 
         self.consumer_group_id = kafka_config["consumer_groups"]["session"]
         self.input_topic = kafka_config["sessions_management_topic"]
@@ -56,22 +57,29 @@ class SessionProcessor(BaseKafkaProcessor):
                     LIMIT 1
                 """, (user_id,))
 
+                SESSION_TIMEOUT_HOURS = self.voice_session_timeout_hours
+
                 if session_decision == "CREATE":
-                    # If there's an active session, see if it's older than 4 hours
+                    # If there's an active session, see if it's older than SESSION_TIMEOUT_HOURS hours
                     if active_session:
                         # Calculate how long it's been active
+                        # Simulate fetching start_time from DB as string (already formatted like "2024-12-22 10:00:00")
                         start_time = active_session["start_time"]
-                        now = datetime.datetime.utcnow()
-                        # Ensure your DB is storing times in UTC or convert accordingly
+                        # Format current time in the same format
+                        now_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+
+                        now = datetime.datetime.strptime(now_str, "%Y-%m-%d %H:%M:%S")
+                        
                         delta = now - start_time
                         hours_diff = delta.total_seconds() / 3600
 
                         if hours_diff < SESSION_TIMEOUT_HOURS:
-                            # Already have an active session less than 4 hours old
-                            debug(f"SessionProcessor: Session already active (id={active_session['id']}) < 4 hours. Skipping creation.")
+                            # Already have an active session less than SESSION_TIMEOUT_HOURS hours old
+                            debug(f"SessionProcessor: Session already active (id={active_session['id']}) < {SESSION_TIMEOUT_HOURS} hours. Skipping creation.")
                             continue
                         else:
                             # Auto-destroy the old session and create a new one
+                            print(f"Hours difference: {hours_diff}")
                             session_id = active_session["id"]
                             self.auto_close_session(session_id)
 
