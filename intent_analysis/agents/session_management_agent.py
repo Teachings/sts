@@ -47,14 +47,7 @@ class SessionManagementAgent:
         # For example, if has_active_session=True, the system prompt might encourage the agent to pick NO_ACTION if user isn't explicitly stopping.
         messages = [
             {"role": "system", "content": self.system_prompt.strip()},
-            {
-                "role": "user",
-                "content": (
-                    f"User said: {user_text}\n"
-                    f"has_active_session={has_active_session}\n"
-                    "Make a decision: CREATE, DESTROY, or NO_ACTION.\n"
-                )
-            }
+            {"role": "user", "content": user_text}
         ]
 
         response = self.client.chat(
