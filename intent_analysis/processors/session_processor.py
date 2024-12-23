@@ -40,6 +40,7 @@ class SessionProcessor(BaseKafkaProcessor):
                 session_decision = data.get("session_decision")
                 reasoning = data.get("reasoning")
                 user_id = data.get("user_id")
+                timestamp = data.get("timestamp")
 
                 if session_decision == "NO_ACTION":
                     # Do nothing, just ignore
@@ -76,9 +77,10 @@ class SessionProcessor(BaseKafkaProcessor):
 
                     # Create new session
                     self.db.execute("""
-                        INSERT INTO sessions (user_id, session_creation_reasoning)
-                        VALUES (%s, %s)
-                    """, (user_id, reasoning))
+                        INSERT INTO sessions (user_id, session_creation_reasoning, start_time)
+                        VALUES (%s, %s, %s)
+                    """, (user_id, reasoning, timestamp))
+
 
                     # Fetch the newly created session ID
                     new_session = self.db.fetchone("""
@@ -98,14 +100,15 @@ class SessionProcessor(BaseKafkaProcessor):
                         continue
 
                     session_id = active_session["id"]
-                    # Mark session as ended
+                    # Mark session as ended with manually set end_time
                     self.db.execute("""
                         UPDATE sessions
-                        SET end_time = CURRENT_TIMESTAMP,
+                        SET end_time = %s,
                             active = FALSE,
                             session_destroy_reasoning = %s
                         WHERE id = %s
-                    """, (reasoning, session_id))
+                    """, (timestamp, reasoning, session_id))
+
 
                     info(f"SessionProcessor: Stopped session {session_id} for user {user_id}")
 

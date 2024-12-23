@@ -31,11 +31,12 @@ class PersistenceProcessor(BaseKafkaProcessor):
             debug(f"PersistenceProcessor received: {transcription}")
 
             try:
+                #query with timestamp
                 insert_sql = """
-                    INSERT INTO transcriptions (user_id, text) 
-                    VALUES (%s, %s)
+                    INSERT INTO transcriptions (user_id, text, timestamp)
+                    VALUES (%s, %s, %s)
                 """
-                self.db.execute(insert_sql, (user_id, transcription))
+                self.db.execute(insert_sql, (user_id, transcription, timestamp))
                 debug("PersistenceProcessor: Inserted into DB")
             except Exception as e:
                 error(f"PersistenceProcessor Error: {e}")

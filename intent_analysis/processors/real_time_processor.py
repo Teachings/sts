@@ -41,6 +41,7 @@ class RealTimeProcessor(BaseKafkaProcessor):
                 payload = json.loads(raw_str)
                 text = payload.get("text", "")
                 user_id = payload.get("user", "UnknownUser")
+                timestamp = payload.get("timestamp", "")
 
                 # 1) Immediate action check
                 decision = self.realtime_agent.evaluate_transcription(text)
@@ -52,7 +53,8 @@ class RealTimeProcessor(BaseKafkaProcessor):
                         "reasoning": decision.reasoning,
                         "categorization": decision.categorization,
                         "refined_prompt": decision.refined_prompt,
-                        "user_id": user_id
+                        "user_id": user_id,
+                        "timestamp": timestamp
                     }
                     self.producer.send(self.output_topic, action_msg)
                     info(f"RealTimeProcessor: Action published to {self.output_topic}")
@@ -77,7 +79,8 @@ class RealTimeProcessor(BaseKafkaProcessor):
                     msg_for_session_processor = {
                         "session_decision": session_decision_obj.session_decision,
                         "reasoning": session_decision_obj.reasoning,
-                        "user_id": user_id
+                        "user_id": user_id,
+                        "timestamp": timestamp
                     }
                     self.producer.send(self.session_mgmt_topic, msg_for_session_processor)
                     info(f"RealTimeProcessor: Session event published: {msg_for_session_processor}")
