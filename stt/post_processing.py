@@ -1,20 +1,24 @@
 import json
 from helpers import log, load_config
 from kafka import KafkaProducer
+from models import TranscriptionSegment
 
-def invoke_after_transcription(json_output):
+def invoke_after_transcription(latest_transcription: TranscriptionSegment):
     """
-    This function will be called after each transcription.
-    You can define the actual implementation here.
-    For now, let's just log the output.
+    Processes the latest transcription segment and publishes it to Kafka.
     """
     log("Post-processing transcription", level="INFO")
-    # log(f"{json.dumps(json_output, indent=4)}", level="INFO")
-    # Assuming data is already validated and correct
-    last_transcription = json_output['transcriptions'][-1]
-    # print(f"Last transcription timestamp: {last_transcription['timestamp']}")
-    log(f"{last_transcription['text']}", level="INFO", color="yellow")
-    produce_message(last_transcription)
+
+    # Prepare the transcription data to send
+    transcription_data = {
+        "timestamp": latest_transcription.timestamp,
+        "text": latest_transcription.text,
+        "user": latest_transcription.user
+    }
+
+    # Log and produce the message
+    log(f"Publishing transcription: {transcription_data['text']}", level="INFO", color="yellow")
+    produce_message(transcription_data)
 
 
 def produce_message(message):

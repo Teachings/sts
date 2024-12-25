@@ -21,6 +21,7 @@ def record_audio_stream(device_id, sample_rate, vad_model, vad_utils, audio_queu
     buffer_duration = 1  # seconds
     chunk_size = int(sample_rate * buffer_duration)
     end_speech_delay = load_config().get("end_speech_delay", 5)  # seconds to wait before concluding speech ended
+    post_speech_buffer_duration = load_config().get("post_speech_buffer_duration", 1)  # extra seconds to record
     last_voice_time = None
     accumulated_audio = []
 
@@ -46,7 +47,15 @@ def record_audio_stream(device_id, sample_rate, vad_model, vad_utils, audio_queu
                     accumulated_audio.extend(audio_int16)
                     last_voice_time = current_time
                 elif last_voice_time and (current_time - last_voice_time) > end_speech_delay:
-                    # Speech has ended after the delay
+                    # Continue recording for the post-speech buffer duration
+                    log(f"No voice detected. Extending recording for {post_speech_buffer_duration} seconds.", level="INFO")
+                    buffer_chunks = int(sample_rate * post_speech_buffer_duration // chunk_size)
+                    for _ in range(buffer_chunks):
+                        audio_chunk, _ = stream.read(chunk_size)
+                        audio_int16 = np.frombuffer(audio_chunk, dtype=np.int16)
+                        accumulated_audio.extend(audio_int16)
+                    # Save the audio
+
                     temp_file = temp_files[active_file_index]
                     log(f"End of speech detected. Saving to {temp_file}.", level="INFO")
 

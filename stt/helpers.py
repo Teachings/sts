@@ -3,19 +3,16 @@ from datetime import datetime
 import json
 import os
 from models import TranscriptionData, TranscriptionSegment
+import yaml
 
 def load_config():
-    """Load configuration from config.json."""
+    """Load configuration from config.yml."""
     try:
-        with open("config.json", "r") as config_file:
-            return json.load(config_file)
+        with open("config.yml", "r") as config_file:
+            return yaml.safe_load(config_file)
     except Exception as e:
-        log(f"Error loading config.json: {str(e)}", level="ERROR")
-        return {
-        "favorite_microphones": [],
-        "broker": "",
-        "topic": ""
-        }
+        log(f"Error loading config.yml: {str(e)}", level="ERROR")
+        return {}
 
 
 def log(message, level="INFO", color=None):

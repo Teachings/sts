@@ -1,0 +1,30 @@
+#This is configuration for the stt module
+
+# Username of the user
+user: "mukul"
+
+#Speech to text settings 
+device: "cuda" #cuda for NVIDIA GPUs or cpu
+compute_type: "float32" # pick float16 for cuda or int8 for CPU
+voice-model: "large-v3-turbo" #base.en
+
+
+# List of favorite microphones
+favorite_microphones:
+  - "Elgato Wave XLR"
+  - "Jabra SPEAK 410"
+
+# Time gap threshold in seconds to determine if a new speech segment starts
+time_gap_threshold: 1
+
+# Delay in seconds after the last speech to consider the end of speech for VAD
+end_speech_delay: 2
+
+# Delay in seconds to record extra sound after VAD detected pause in last speech segment
+post_speech_buffer_duration: 0
+
+# Kafka broker address
+broker: "localhost:9092"
+
+# Topic for publishing all transcriptions
+topic_transcriptions_all: "transcriptions.all"

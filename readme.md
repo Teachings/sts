@@ -122,7 +122,7 @@ docker-compose up -d
 
 3. **Configure Audio Devices**:
    - Use `sounddevice.query_devices()` to list available microphones.
-   - Modify `config.json` to specify preferred devices if necessary.
+   - Modify `config.yml` to specify preferred devices if necessary.
 
 4. **Run the Application**:
    - Start the transcription and Kafka consumer as described above.

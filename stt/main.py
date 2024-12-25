@@ -5,7 +5,7 @@ import signal
 from audio_utils import list_audio_devices, get_device_sampling_rate
 from vad import load_vad_model, record_audio_stream
 from transcriber import transcribe_audio_stream
-from helpers import log 
+from helpers import log, load_config 
 
 # Global flag to signal threads to stop
 shutdown_event = threading.Event()
@@ -19,10 +19,12 @@ def signal_handler(signal_received, frame):
 
 
 def main():
+    config = load_config()
+    
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Real-time audio transcription with VAD.")
-    parser.add_argument("--model", type=str, default="base.en", help="Whisper model name (default: base.en)")
-    parser.add_argument("--device", type=str, default="cuda", help="Device to use for inference (default: cuda)")
+    parser.add_argument("--model", type=str, default=config.get("voice-model", "large-v3-turbo"), help="Whisper model name (default: base.en)")
+    parser.add_argument("--device", type=str, default=config.get("device", "cuda"), help="Device to use for inference (default: cuda)")
     parser.add_argument("--rate", type=int, help="Override sampling rate (optional)")
     args = parser.parse_args()
 
