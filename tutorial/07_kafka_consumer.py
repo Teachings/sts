@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, ValidationError
 import json
 
 # Kafka configurations
-TOPIC_NAME = "transcriptions.all"
+TOPIC_NAME = "text_to_speech"
 BROKER = "localhost:9092"
 
 # Pydantic model for deserializing messages

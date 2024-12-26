@@ -2,6 +2,8 @@ import requests
 import pydub
 from pydub.playback import play
 from kafka import KafkaConsumer
+from pydantic import BaseModel, Field, ValidationError
+import json
 
 # Kafka configurations
 TOPIC_NAME = "text_to_speech"
@@ -14,13 +16,19 @@ HEADERS = {
     "Authorization": f"Bearer {'sk-111111111'}"  # Replace with your API key
 }
 
-def text_to_speech(input_text, model="tts-1", voice="alloy", response_format="mp3", speed=0.75):
+# Pydantic model for deserializing messages
+class TranscriptionSegment(BaseModel):
+    timestamp: str = Field(..., description="Timestamp of the transcription")
+    text: str = Field(..., description="Text of the transcription")
+    user: str = Field(..., description="User Id")
+
+def text_to_speech(segment: TranscriptionSegment):
     payload = {
-        "model": model,
-        "input": input_text,
-        "voice": voice,
-        "response_format": response_format,
-        "speed": speed
+        "model": "tts-1",
+        "input": segment.text,
+        "voice": "alloy",
+        "response_format": "mp3",
+        "speed": 0.75
     }
 
     try:
@@ -36,7 +44,7 @@ def text_to_speech(input_text, model="tts-1", voice="alloy", response_format="mp
         print(f"Audio saved to {output_file}")
 
         # Play the audio
-        audio = pydub.AudioSegment.from_file(output_file, format=response_format)
+        audio = pydub.AudioSegment.from_file(output_file, format="mp3")
         play(audio)
 
     except requests.exceptions.RequestException as e:
@@ -54,8 +62,15 @@ def consume_messages():
 
     print(f"Listening to topic '{TOPIC_NAME}'...")
     for message in consumer:
-        print(f"Received message: {message.value}")
-        text_to_speech(message.value)
+        try:
+            # Deserialize the message value (JSON string) into a Pydantic object
+            segment = TranscriptionSegment(**json.loads(message.value))
+            print(f"Received TranscriptionSegment: {segment}")
+            text_to_speech(segment)
+        except json.JSONDecodeError as e:
+            print(f"Failed to decode JSON: {e}")
+        except ValidationError as e:
+            print(f"Validation error: {e}")
 
 if __name__ == "__main__":
     consume_messages()

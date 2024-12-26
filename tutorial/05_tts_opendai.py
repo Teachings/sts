@@ -6,16 +6,16 @@ from pydub.playback import play
 API_URL = "http://localhost:8000/v1/audio/speech"
 HEADERS = {
     "Content-Type": "application/json",
-    "Authorization": f"Bearer {'sk-111111111'}"  # Replace with your API key
+    "Authorization": f"Bearer {'sk-111111111'}"  # fake API key for local
 }
 
-def text_to_speech(input_text, model="tts-1", voice="alloy", response_format="mp3", speed=1):
+def text_to_speech(input_text):
     payload = {
-        "model": model,
+        "model": "tts-1",
         "input": input_text,
-        "voice": voice,
-        "response_format": response_format,
-        "speed": speed
+        "voice": "alloy",
+        "response_format": "mp3",
+        "speed": 0.75
     }
 
     try:
@@ -31,7 +31,7 @@ def text_to_speech(input_text, model="tts-1", voice="alloy", response_format="mp
         print(f"Audio saved to {output_file}")
 
         # Play the audio
-        audio = pydub.AudioSegment.from_file(output_file, format=response_format)
+        audio = pydub.AudioSegment.from_file(output_file, format="mp3")
         play(audio)
 
     except requests.exceptions.RequestException as e:

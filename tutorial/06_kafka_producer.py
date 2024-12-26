@@ -10,7 +10,7 @@ class TranscriptionSegment(BaseModel):
 
 # Kafka Configuration
 BROKER = "localhost:9092"  # Replace with your broker's address if not localhost
-TOPIC_NAME = "transcriptions.all"
+TOPIC_NAME = "text_to_speech"
 
 def produce_message(message):
     # Initialize Kafka Producer
