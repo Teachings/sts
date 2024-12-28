@@ -1,4 +1,4 @@
-# **Wiki: Setting Up Speech-to-Text with VAD and Faster Whisper**
+# **Wiki: Setting Up Speech-to-Speech with VAD, Faster Whisper and Kafka**
 
 ## **Introduction**
 This project provides real-time speech-to-text transcription using Faster Whisper and voice activity detection (VAD). It efficiently detects speech, transcribes audio, and supports seamless real-time processing with optional Kafka-based post-processing.
@@ -155,10 +155,214 @@ docker-compose up -d
 
 ---
 
-## **Key Updates**
-- Added a `kafka` folder with:
-  - **`docker-compose.yaml`**: Automates Kafka setup using Docker.
-  - **`kafka_consumer.py`**: Consumes transcription messages and converts them to speech using a TTS API.
-- Enhanced integration for post-processing with Kafka.
-- Refactored to support `python stt/main.py` for application startup.
-- Grouped transcriptions for better readability.
+## Intent Analysis
+
+This sub-project implements **text-to-speech** message handling, **session management**, **real-time agent** decision-making, and **aggregation** of transcriptions for final summaries. It’s built around **Kafka** for message passing, **Postgres** for storing transcriptions, and **LLM-based agents** (using **ollama**) to make decisions on how to process user requests.
+
+### Core Ideas
+
+1. **Transcriptions** are published to **`transcriptions.all`**.  
+2. **PersistenceProcessor** stores each transcription in **Postgres**, tagged by user ID and timestamp.  
+3. **RealTimeProcessor** analyzes each transcription in real time:
+   - Checks if it needs an **immediate action** (turn on lights, do a web search, etc.).  
+   - Determines whether to **create**, **destroy**, or **ignore** session boundaries.  
+4. **SessionProcessor** listens for session commands (`CREATE`, `DESTROY`, `NO_ACTION`) on **`sessions.management`**.  
+   - Maintains the **sessions** table in Postgres, including a **timeout** mechanism for long sessions.  
+   - Triggers an **AggregatorProcessor** when a session is destroyed.  
+5. **AggregatorProcessor** gathers all transcriptions from the final session window and compiles them into a summary stored in the sessions table.  
+6. **IntentProcessor** can perform text-to-speech or other post-processing on “action required” events.
+
+This design allows each piece to be **independently** developed, tested, and scaled.
+
+---
+
+## Directory Structure
+
+```
+intent_analysis/
+├── run_real_time_processor.py
+├── run_aggregator_processor.py
+├── run_session_processor.py
+├── run_persistence_processor.py
+├── init_db.py
+├── run_intent_processor.py
+├── run_transcription_processor.py
+├── services/
+│   └── tts_service.py
+├── core/
+│   ├── database.py
+│   ├── logger.py
+│   ├── base_processor.py
+│   └── config_loader.py
+├── agents/
+│   ├── realtime_agent.py
+│   ├── session_management_agent.py
+│   └── decision_agent.py
+├── processors/
+│   ├── transcription_processor.py
+│   ├── aggregator_processor.py
+│   ├── intent_processor.py
+│   ├── persistence_processor.py
+│   ├── session_processor.py
+│   └── real_time_processor.py
+└── config/
+    ├── prompts.yml
+    └── config.yml
+```
+
+### Key Subdirectories
+
+1. **agents/**: LLM-based logic (e.g., RealTimeAgent, SessionManagementAgent, DecisionAgent).  
+2. **processors/**: Kafka consumers that orchestrate reading/writing messages, calling agents, storing data, etc.  
+3. **core/**: Reusable utilities (database connections, logging, base classes, config loading).  
+4. **services/**: Additional micro-services or integration logic (e.g., TTS).
+
+---
+
+## How Each Processor Works
+
+Below is a brief explanation of each processor’s role. Each one **inherits** from `BaseKafkaProcessor`, sets up a **KafkaConsumer** and optionally a **KafkaProducer**, and implements the `process_records()` method.
+
+### 1. **PersistenceProcessor**
+- **Topic**: Consumes from `transcriptions.all`.  
+- **Purpose**: Stores each incoming transcription into the **transcriptions** table in Postgres.  
+- **File**: `processors/persistence_processor.py`.
+
+### 2. **RealTimeProcessor**
+- **Topic**: Consumes from `transcriptions.all`.  
+- **Purpose**:
+  - Passes transcriptions to the **RealtimeAgent** to detect if immediate action is needed.
+    - If yes, publishes to `transcriptions.agent.action`.  
+  - Passes transcriptions to **SessionManagementAgent** to decide whether to CREATE/DESTROY/NO_ACTION for sessions.
+    - If CREATE/DESTROY, publishes to `sessions.management`.  
+- **File**: `processors/real_time_processor.py`.
+
+### 3. **SessionProcessor**
+- **Topic**: Consumes from `sessions.management`.  
+- **Purpose**:
+  - Updates the **sessions** table in Postgres:
+    - **CREATE** a new session if user has no active session or if the old session timed out.
+    - **DESTROY** the current session if user explicitly requests “close the session.”  
+  - Once a session is destroyed, publishes an **aggregation request** to `aggregations.request`.  
+- **File**: `processors/session_processor.py`.
+
+### 4. **AggregatorProcessor**
+- **Topic**: Consumes from `aggregations.request`.  
+- **Purpose**:
+  - Upon receiving a “session_id,” fetches all transcriptions in that session’s start/end time window from the DB.
+  - Joins them into one **summary** and updates the `sessions.summary` field.  
+- **File**: `processors/aggregator_processor.py`.
+
+### 5. **TranscriptionProcessor** (Optional Legacy)
+- **Topic**: Consumes from `transcriptions.all`.  
+- **Purpose**: An **alternative** or **demo** processor that uses `DecisionAgent` for intent detection and publishes “action” messages.  
+- **File**: `processors/transcription_processor.py`.
+
+### 6. **IntentProcessor**
+- **Topic**: Consumes from `transcriptions.agent.action`.  
+- **Purpose**:
+  - Reads the “reasoning” field from an agent’s action message and calls a TTS endpoint to “speak” the response.  
+- **File**: `processors/intent_processor.py`.
+
+---
+
+## Agents
+
+**Agents** are classes that talk to the **ollama** LLM and produce structured JSON decisions (via Pydantic).
+
+1. **RealtimeAgent** (`agents/realtime_agent.py`)
+   - Decides if an immediate real-time action is needed.  
+
+2. **SessionManagementAgent** (`agents/session_management_agent.py`)
+   - Decides if the user’s utterance should CREATE, DESTROY, or do NO_ACTION for session management.  
+
+3. **DecisionAgent** (`agents/decision_agent.py`)
+   - A generic agent that decides if an action is required (used by `TranscriptionProcessor` in the older pipeline).  
+
+Each agent has a corresponding **system prompt** in **`config/prompts.yml`**.
+
+---
+
+## Configuration
+
+All configs are in **`config/config.yml`**.  
+Key sections include:
+
+- **kafka**: Contains broker addresses, consumer groups, and topic names.  
+- **db**: Postgres connection parameters.  
+- **ollama**: LLM (model name, host URL, etc.).  
+- **text_to_speech**: TTS endpoints, API keys, etc.  
+- **app**: Additional project-wide settings like `voice_session_timeout_hours`.
+
+---
+
+## How To Run
+
+1. **Install Dependencies**  
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Ensure Kafka + Postgres** are running (e.g., via Docker Compose or your preferred setup).
+
+3. **Initialize Database**  
+   ```bash
+   python init_db.py
+   ```
+   - This creates the `transcriptions` and `sessions` tables if they don’t exist.
+
+4. **Start Processors** (in separate terminals or background processes):
+   ```bash
+   python run_persistence_processor.py
+   python run_real_time_processor.py
+   python run_session_processor.py
+   python run_aggregator_processor.py
+   ```
+   - (Optional) Start `run_intent_processor.py` if you want TTS on agent actions.
+   - (Optional) Start `run_transcription_processor.py` if you’re using the older DecisionAgent approach.
+
+5. **Publish Transcriptions** to `transcriptions.all`  
+   - Typically from a **speech-to-text** system that sends messages like:
+     ```json
+     {
+       "timestamp": "2024-12-21 23:00:21",
+       "text": "The user is seeking assistance with accessibility features.",
+       "user": "mukul"
+     }
+     ```
+   - This triggers the pipeline:
+     - **PersistenceProcessor** saves it to DB.  
+     - **RealTimeProcessor** decides if it’s an immediate command or session action.
+
+6. **Observe** logs in each processor for real-time debugging information (`info`, `debug`, `error` logs).
+
+---
+
+## Data Flow Summary
+
+1. **Speech-to-text** publishes JSON to **`transcriptions.all`**.  
+2. **PersistenceProcessor** saves every record in DB.  
+3. **RealTimeProcessor**:
+   - Uses **RealtimeAgent** to see if any immediate action is needed.  
+     - If yes, publishes to **`transcriptions.agent.action`**.  
+   - Uses **SessionManagementAgent** to see if we should `CREATE`/`DESTROY` or do `NO_ACTION` about sessions.  
+     - If `CREATE` or `DESTROY`, publishes to **`sessions.management`**.  
+4. **SessionProcessor**:
+   - Consumes from `sessions.management`, updates the `sessions` table, and if the session is ended, publishes a message to `aggregations.request`.  
+5. **AggregatorProcessor**:
+   - Consumes from `aggregations.request`, fetches transcriptions from the DB within the session window, and updates `sessions.summary`.  
+6. **IntentProcessor** (optional):
+   - Consumes from `transcriptions.agent.action`, reads the `reasoning` field, and performs TTS playback.
+
+---
+
+## Extending the System
+
+- **Add new processors** by creating a subclass of `BaseKafkaProcessor`, hooking into new or existing topics.  
+- **Add new LLM agents** for specialized tasks (similar to `RealtimeAgent` or `SessionManagementAgent`).  
+- **Modify DB** via migrations or `initialize_database` for additional columns/tables.  
+- **Adjust** session logic or timeouts in `SessionProcessor` to suit your needs.
+
+This modular design ensures you can **scale** or **change** parts of the pipeline without breaking the rest—Kafka topics and the DB serve as the decoupling layer.
+
+---
