@@ -1,0 +1,10 @@
+{
+    "type": "record",
+    "name": "AggregatorRequest",
+    "namespace": "sts.aggregator",
+    "fields": [
+      { "name": "session_id", "type": "int" },
+      { "name": "user_id", "type": "string" }
+    ]
+  }
+  

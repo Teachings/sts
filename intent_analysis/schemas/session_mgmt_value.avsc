@@ -1,0 +1,12 @@
+{
+    "type": "record",
+    "name": "SessionMgmtMessage",
+    "namespace": "sts.session",
+    "fields": [
+      { "name": "session_decision", "type": "string" },
+      { "name": "reasoning",        "type": "string" },
+      { "name": "user_id",          "type": "string" },
+      { "name": "timestamp",        "type": "string" }
+    ]
+  }
+  

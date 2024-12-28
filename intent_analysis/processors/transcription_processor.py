@@ -1,58 +1,72 @@
-import json
-from core.base_processor import BaseKafkaProcessor
+from core.base_avro_processor import BaseAvroProcessor
 from core.logger import info, warning, error, debug
-from agents.decision_agent import DecisionAgent, AgentDecision
+from agents.decision_agent import DecisionAgent
 
-class TranscriptionProcessor(BaseKafkaProcessor):
-    """
-    TranscriptionProcessor reads raw transcriptions from the configured topic,
-    uses the DecisionAgent to determine if action is required, and publishes
-    an action message if so.
-    """
+class TranscriptionProcessor(BaseAvroProcessor):
     def __init__(self, config):
         super().__init__(config)
-        kafka_config = config["kafka"]
-        self.consumer_group_id = kafka_config["consumer_groups"]["transcription"]
+        kafka_cfg = config["kafka"]
 
-        self.input_topic = kafka_config["transcriptions_topic"]
-        self.output_topic = kafka_config["actions_topic"]
+        # Consumer config
+        self.input_topic = kafka_cfg["transcriptions_topic"]
+        group_id = kafka_cfg["consumer_groups"]["transcription"]
 
-        # Initialize Kafka
-        self.init_consumer(self.input_topic)
-        self.init_producer()
+        # Producer config
+        self.output_topic = kafka_cfg["actions_topic"]
 
-        # Initialize the DecisionAgent
+        # Initialize Avro consumer with transcription schema
+        self.init_consumer(group_id=group_id, topics=[self.input_topic], offset_reset="latest")
+
+        # Initialize Avro producer with Action schema
+        self.init_producer(
+            producer_name="action_producer",
+            avro_schema_file="schemas/action_value.avsc"
+        )
+
+        # The DecisionAgent logic remains the same
         self.decision_agent = DecisionAgent(config)
 
     def process_records(self):
-        info(f"Listening on topic '{self.input_topic}'...")
-        for message in self.consumer:
-            if not self.running:
-                break
-
-            raw_str = message.value
-            payload = json.loads(raw_str)
-            user_id = payload.get("user", "UnknownUser")
-            transcription = payload.get("text", "")
-            timestamp = payload.get("timestamp", "")
-            
-            debug(f"Received transcription: {transcription}")
-
+        info(f"TranscriptionProcessor: Listening on {self.input_topic} (Avro)...")
+        while self.running:
             try:
+                msg = self.consumer.poll(1.0)  # poll for 1 second
+                if msg is None:
+                    continue
+                if msg.error():
+                    warning(f"TranscriptionProcessor consumer error: {msg.error()}")
+                    continue
+
+                # Avro-deserialized dict
+                payload = msg.value()
+                if not payload:
+                    continue
+
+                transcription = payload.get("text", "")
+                user_id = payload.get("user", "UnknownUser")
+                timestamp = payload.get("timestamp", "")
+
+                # Evaluate with DecisionAgent
                 decision = self.decision_agent.evaluate_transcription(transcription)
-                debug(f"Decision object: {decision.model_dump_json(indent=2)}")
+                debug(f"Decision object: {decision.model_dump()}")
 
                 if decision.action_required_decision:
-                    action_message = {
-                        "original_transcription": transcription,
-                        "refined_prompt": decision.refined_prompt,
-                        "categorization": decision.categorization,
+                    action_msg = {
+                        "original_text": transcription,
                         "reasoning": decision.reasoning,
+                        "categorization": decision.categorization,
+                        "refined_prompt": decision.refined_prompt,
+                        "user_id": user_id,
+                        "timestamp": timestamp
                     }
-                    self.producer.send(self.output_topic, action_message)
-                    info(f"Published action to '{self.output_topic}': {action_message}")
-
+                    # Produce to actions_topic with Action schema
+                    self.produce_message(
+                        producer_name="action_producer",
+                        topic_name=self.output_topic,
+                        value_dict=action_msg
+                    )
+                    info(f"TranscriptionProcessor: Published action to '{self.output_topic}'")
             except Exception as e:
-                error(f"Error processing transcription: {e}")
+                error(f"Error in TranscriptionProcessor: {e}")
 
         self.shutdown()

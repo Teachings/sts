@@ -1,30 +1,30 @@
-#This is configuration for the stt module
+# This is configuration for the stt (Speech-to-Text) module
 
 # Username of the user
-user: "mukul"
+user: "mukul" # The username associated with this configuration
 
-#Speech to text settings 
-device: "cuda" #cuda for NVIDIA GPUs or cpu
-compute_type: "float32" # pick float16 for cuda or int8 for CPU
-voice-model: "large-v3-turbo" #base.en
-
+# Speech to text settings 
+device: "cuda" # Specify the device to use for processing ("cuda" for NVIDIA GPUs or "cpu")
+compute_type: "float32" # Specify the compute type ("float16" for CUDA, "int8" for CPU)
+voice-model: "large-v3-turbo" # Specify the voice model to use (e.g., "base.en")
 
 # List of favorite microphones
 favorite_microphones:
-  - "Elgato Wave XLR"
-  - "Jabra SPEAK 410"
+  - "Elgato Wave XLR" # A preferred microphone model
+  # - "Jabra SPEAK 410" # Another preferred microphone model (commented out)
 
 # Time gap threshold in seconds to determine if a new speech segment starts
-time_gap_threshold: 1
+time_gap_threshold: 1 # The time gap in seconds considered as the start of a new speech segment
 
-# Delay in seconds after the last speech to consider the end of speech for VAD
-end_speech_delay: 2
+# Delay in seconds after the last speech to consider the end of speech for VAD (Voice Activity Detection)
+end_speech_delay: 2 # The delay in seconds after the last speech to determine the end of speech
 
 # Delay in seconds to record extra sound after VAD detected pause in last speech segment
-post_speech_buffer_duration: 0
+post_speech_buffer_duration: 0 # Additional buffer duration in seconds to capture trailing audio
 
-# Kafka broker address
-broker: "localhost:9092"
-
-# Topic for publishing all transcriptions
-topic_transcriptions_all: "transcriptions.all"
+# Kafka configuration
+kafka:
+  broker: "localhost:9092" # The Kafka broker address and port
+  topic_transcriptions_all: "transcriptions.all" # The Kafka topic to publish all transcriptions
+  schema_registry_url: "http://localhost:8081" # The URL for the schema registry
+  schema_location: "intent_analysis/schemas/transcription_value.avsc"

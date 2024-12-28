@@ -1,35 +1,42 @@
-import json
-from core.base_processor import BaseKafkaProcessor
-from core.logger import info, debug, error
+from confluent_kafka import KafkaException
+from core.base_avro_processor import BaseAvroProcessor
+from core.logger import info, error
 from core.database import Database
 
-class AggregatorProcessor(BaseKafkaProcessor):
+class AggregatorProcessor(BaseAvroProcessor):
     def __init__(self, config):
         super().__init__(config)
-        kafka_config = config["kafka"]
-        db_config = config["db"]
+        kafka_cfg = config["kafka"]
+        db_cfg = config["db"]
 
-        self.consumer_group_id = kafka_config["consumer_groups"]["aggregator"]
-        self.input_topic = kafka_config["aggregations_request_topic"]
-        self.init_consumer(self.input_topic)
+        self.input_topic = kafka_cfg["aggregations_request_topic"]
+        group_id = kafka_cfg["consumer_groups"]["aggregator"]
 
-        self.db = Database(db_config)
+        self.db = Database(db_cfg)
+
+        # Only Avro consumer for aggregator requests
+        self.init_consumer(group_id=group_id, topics=[self.input_topic], offset_reset="latest")
 
     def process_records(self):
-        info(f"AggregatorProcessor: Listening on topic '{self.input_topic}'...")
-        for message in self.consumer:
-            if not self.running:
-                break
+        info(f"AggregatorProcessor: Listening on topic '{self.input_topic}' (Avro)...")
 
-            msg_str = message.value
-            debug(f"AggregatorProcessor received: {msg_str}")
-
+        while self.running:
             try:
-                data = json.loads(msg_str)
+                msg = self.consumer.poll(1.0)
+                if msg is None:
+                    continue
+                if msg.error():
+                    error(f"AggregatorProcessor consumer error: {msg.error()}")
+                    continue
+
+                data = msg.value()
+                if not data:
+                    continue
+
                 session_id = data.get("session_id")
                 user_id = data.get("user_id")
 
-                # Step 1: Retrieve session timestamps
+                # 1. Retrieve session timestamps
                 session_sql = """
                     SELECT start_time, end_time FROM sessions
                     WHERE id = %s
@@ -41,11 +48,9 @@ class AggregatorProcessor(BaseKafkaProcessor):
 
                 start_time = session_row["start_time"]
                 end_time = session_row["end_time"]
+                info(f"Start Time: {start_time}, end Time: {end_time} for session {session_id}")
 
-                info(f"Start Time: {start_time} and end time is {end_time} for session {session_id}")
-
-
-                # Step 2: Gather transcriptions for the session based on timestamps
+                # 2. Gather transcriptions
                 select_transcriptions_sql = """
                     SELECT text FROM transcriptions
                     WHERE timestamp BETWEEN %s AND %s AND user_id = %s
@@ -54,11 +59,11 @@ class AggregatorProcessor(BaseKafkaProcessor):
                 rows = self.db.fetchall(select_transcriptions_sql, (start_time, end_time, user_id))
                 all_text = [r["text"] for r in rows]
 
-                # Step 3: Aggregate the text
+                # 3. Aggregate text
                 aggregated_text = "\n".join(all_text)
                 info(f"AggregatorProcessor: Aggregated {len(all_text)} transcriptions for session {session_id}")
 
-                # Step 4: Store the aggregated text in the sessions table
+                # 4. Store in session summary
                 update_session_sql = """
                     UPDATE sessions
                     SET summary = %s
@@ -67,6 +72,8 @@ class AggregatorProcessor(BaseKafkaProcessor):
                 self.db.execute(update_session_sql, (aggregated_text, session_id))
                 info(f"AggregatorProcessor: Stored summary in session {session_id}")
 
+            except KafkaException as ke:
+                error(f"Kafka error in AggregatorProcessor: {ke}")
             except Exception as e:
                 error(f"AggregatorProcessor Error: {e}")
 

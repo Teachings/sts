@@ -1,50 +1,53 @@
-import json
-import datetime, time
-from core.base_processor import BaseKafkaProcessor
+import datetime
+from core.base_avro_processor import BaseAvroProcessor
 from core.logger import info, debug, error
 from core.database import Database
 
-class SessionProcessor(BaseKafkaProcessor):
+class SessionProcessor(BaseAvroProcessor):
     def __init__(self, config):
         super().__init__(config)
-        kafka_config = config["kafka"]
-        db_config = config["db"]
-        app_config = config["app"]
-        
-        self.voice_session_timeout_hours = app_config["voice_session_timeout_hours"]
+        kafka_cfg = config["kafka"]
+        db_cfg = config["db"]
+        app_cfg = config["app"]
 
-        self.consumer_group_id = kafka_config["consumer_groups"]["session"]
-        self.input_topic = kafka_config["sessions_management_topic"]
-        self.aggregations_topic = kafka_config["aggregations_request_topic"]
+        self.voice_session_timeout_hours = app_cfg["voice_session_timeout_hours"]
 
-        self.init_consumer(self.input_topic)
-        self.init_producer()
+        self.input_topic = kafka_cfg["sessions_management_topic"]
+        self.aggregations_topic = kafka_cfg["aggregations_request_topic"]
 
-        self.db = Database(db_config)
+        group_id = kafka_cfg["consumer_groups"]["session"]
+        self.db = Database(db_cfg)
+
+        # Avro consumer for session mgmt
+        self.init_consumer(group_id=group_id, topics=[self.input_topic], offset_reset="latest")
+
+        # Avro producer for aggregator requests
+        self.init_producer(
+            producer_name="aggregator_producer",
+            avro_schema_file="schemas/aggregator_value.avsc"
+        )
 
     def process_records(self):
-        info(f"SessionProcessor: Listening on topic '{self.input_topic}'...")
-        for message in self.consumer:
-            if not self.running:
-                break
-
-            msg_str = message.value
-            debug(f"SessionProcessor received: {msg_str}")
-
+        info(f"SessionProcessor: Listening on topic '{self.input_topic}' (Avro)...")
+        while self.running:
             try:
-                data = json.loads(msg_str)
-                # e.g. data = {
-                #    "session_decision": "CREATE" | "DESTROY" | "NO_ACTION",
-                #    "reasoning": "...",
-                #    "user_id": "mukul"
-                # }
+                msg = self.consumer.poll(1.0)
+                if msg is None:
+                    continue
+                if msg.error():
+                    error(f"SessionProcessor consumer error: {msg.error()}")
+                    continue
+
+                data = msg.value()
+                if not data:
+                    continue
+
                 session_decision = data.get("session_decision")
                 reasoning = data.get("reasoning")
                 user_id = data.get("user_id")
                 timestamp = data.get("timestamp")
 
                 if session_decision == "NO_ACTION":
-                    # Do nothing, just ignore
                     debug("SessionProcessor: NO_ACTION received, ignoring.")
                     continue
 
@@ -57,33 +60,22 @@ class SessionProcessor(BaseKafkaProcessor):
                     LIMIT 1
                 """, (user_id,))
 
-                SESSION_TIMEOUT_HOURS = self.voice_session_timeout_hours
-
                 if session_decision == "CREATE":
-                    # If there's an active session, see if it's older than SESSION_TIMEOUT_HOURS hours
                     if active_session:
-                        # Calculate how long it's been active
-                        # Simulate fetching start_time from DB as string (already formatted like "2024-12-22 10:00:00")
+                        # Check if old session is older than voice_session_timeout_hours
                         start_time = active_session["start_time"]
-                        # Format current time in the same format
-                        now_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
-
-                        now = datetime.datetime.strptime(now_str, "%Y-%m-%d %H:%M:%S")
-                        
+                        now = datetime.datetime.now()
                         delta = now - start_time
                         hours_diff = delta.total_seconds() / 3600
 
-                        if hours_diff < SESSION_TIMEOUT_HOURS:
-                            # Already have an active session less than SESSION_TIMEOUT_HOURS hours old
-                            debug(f"SessionProcessor: Session already active (id={active_session['id']}) < {SESSION_TIMEOUT_HOURS} hours. Skipping creation.")
+                        if hours_diff < self.voice_session_timeout_hours:
+                            debug(f"SessionProcessor: Session already active < {self.voice_session_timeout_hours} hours. Skipping creation.")
                             continue
                         else:
-                            # Auto-destroy the old session and create a new one
-                            print(f"Hours difference: {hours_diff}")
-                            session_id = active_session["id"]
-                            self.auto_close_session(session_id)
+                            # Auto-close old session
+                            self.auto_close_session(active_session["id"])
 
-                    # Create new session
+                    # Create a new session
                     self.db.execute("""
                         INSERT INTO sessions (user_id, session_creation_reasoning, start_time)
                         VALUES (%s, %s, %s)
@@ -102,13 +94,11 @@ class SessionProcessor(BaseKafkaProcessor):
                     info(f"SessionProcessor: Created new session {new_session_id} for {user_id}")
 
                 elif session_decision == "DESTROY":
-                    # If no active session, do nothing
                     if not active_session:
-                        debug(f"SessionProcessor: No active session to destroy for user {user_id}, ignoring.")
+                        debug(f"No active session to destroy for user {user_id}, ignoring.")
                         continue
 
                     session_id = active_session["id"]
-                    # Mark session as ended with manually set end_time
                     self.db.execute("""
                         UPDATE sessions
                         SET end_time = %s,
@@ -116,7 +106,6 @@ class SessionProcessor(BaseKafkaProcessor):
                             session_destroy_reasoning = %s
                         WHERE id = %s
                     """, (timestamp, reasoning, session_id))
-
 
                     info(f"SessionProcessor: Stopped session {session_id} for user {user_id}")
 
@@ -134,8 +123,15 @@ class SessionProcessor(BaseKafkaProcessor):
                     info(f"Start Time: {start_time} and end time is {end_time} for session {session_id}")
 
                     # Trigger aggregator
-                    agg_msg = {"session_id": session_id, "user_id": user_id}
-                    self.producer.send(self.aggregations_topic, agg_msg)
+                    agg_msg = {
+                        "session_id": session_id,
+                        "user_id": user_id
+                    }
+                    self.produce_message(
+                        producer_name="aggregator_producer",
+                        topic_name=self.aggregations_topic,
+                        value_dict=agg_msg
+                    )
                     info(f"SessionProcessor: Aggregation request sent for session {session_id}")
 
             except Exception as e:
@@ -152,7 +148,7 @@ class SessionProcessor(BaseKafkaProcessor):
             UPDATE sessions
             SET end_time = CURRENT_TIMESTAMP,
                 active = FALSE,
-                session_destroy_reasoning = 'Timed out after 4 hours of inactivity'
+                session_destroy_reasoning = 'Timed out.'
             WHERE id = %s
         """, (session_id,))
         info(f"SessionProcessor: Auto-closed old session {session_id}")

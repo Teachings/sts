@@ -11,3 +11,4 @@ ollama
 psycopg2-binary
 requests
 PyYAML
+confluent-kafka[avro]

@@ -193,6 +193,7 @@ intent_analysis/
 │   ├── database.py
 │   ├── logger.py
 │   ├── base_processor.py
+│   ├── base_avro_processor.py
 │   └── config_loader.py
 ├── agents/
 │   ├── realtime_agent.py
@@ -219,70 +220,6 @@ intent_analysis/
 
 ---
 
-## How Each Processor Works
-
-Below is a brief explanation of each processor’s role. Each one **inherits** from `BaseKafkaProcessor`, sets up a **KafkaConsumer** and optionally a **KafkaProducer**, and implements the `process_records()` method.
-
-### 1. **PersistenceProcessor**
-- **Topic**: Consumes from `transcriptions.all`.  
-- **Purpose**: Stores each incoming transcription into the **transcriptions** table in Postgres.  
-- **File**: `processors/persistence_processor.py`.
-
-### 2. **RealTimeProcessor**
-- **Topic**: Consumes from `transcriptions.all`.  
-- **Purpose**:
-  - Passes transcriptions to the **RealtimeAgent** to detect if immediate action is needed.
-    - If yes, publishes to `transcriptions.agent.action`.  
-  - Passes transcriptions to **SessionManagementAgent** to decide whether to CREATE/DESTROY/NO_ACTION for sessions.
-    - If CREATE/DESTROY, publishes to `sessions.management`.  
-- **File**: `processors/real_time_processor.py`.
-
-### 3. **SessionProcessor**
-- **Topic**: Consumes from `sessions.management`.  
-- **Purpose**:
-  - Updates the **sessions** table in Postgres:
-    - **CREATE** a new session if user has no active session or if the old session timed out.
-    - **DESTROY** the current session if user explicitly requests “close the session.”  
-  - Once a session is destroyed, publishes an **aggregation request** to `aggregations.request`.  
-- **File**: `processors/session_processor.py`.
-
-### 4. **AggregatorProcessor**
-- **Topic**: Consumes from `aggregations.request`.  
-- **Purpose**:
-  - Upon receiving a “session_id,” fetches all transcriptions in that session’s start/end time window from the DB.
-  - Joins them into one **summary** and updates the `sessions.summary` field.  
-- **File**: `processors/aggregator_processor.py`.
-
-### 5. **TranscriptionProcessor** (Optional Legacy)
-- **Topic**: Consumes from `transcriptions.all`.  
-- **Purpose**: An **alternative** or **demo** processor that uses `DecisionAgent` for intent detection and publishes “action” messages.  
-- **File**: `processors/transcription_processor.py`.
-
-### 6. **IntentProcessor**
-- **Topic**: Consumes from `transcriptions.agent.action`.  
-- **Purpose**:
-  - Reads the “reasoning” field from an agent’s action message and calls a TTS endpoint to “speak” the response.  
-- **File**: `processors/intent_processor.py`.
-
----
-
-## Agents
-
-**Agents** are classes that talk to the **ollama** LLM and produce structured JSON decisions (via Pydantic).
-
-1. **RealtimeAgent** (`agents/realtime_agent.py`)
-   - Decides if an immediate real-time action is needed.  
-
-2. **SessionManagementAgent** (`agents/session_management_agent.py`)
-   - Decides if the user’s utterance should CREATE, DESTROY, or do NO_ACTION for session management.  
-
-3. **DecisionAgent** (`agents/decision_agent.py`)
-   - A generic agent that decides if an action is required (used by `TranscriptionProcessor` in the older pipeline).  
-
-Each agent has a corresponding **system prompt** in **`config/prompts.yml`**.
-
----
-
 ## Configuration
 
 All configs are in **`config/config.yml`**.  
@@ -292,7 +229,7 @@ Key sections include:
 - **db**: Postgres connection parameters.  
 - **ollama**: LLM (model name, host URL, etc.).  
 - **text_to_speech**: TTS endpoints, API keys, etc.  
-- **app**: Additional project-wide settings like `voice_session_timeout_hours`.
+- **app**: Additional project-wide settings
 
 ---
 
@@ -358,11 +295,9 @@ Key sections include:
 
 ## Extending the System
 
-- **Add new processors** by creating a subclass of `BaseKafkaProcessor`, hooking into new or existing topics.  
+- **Add new processors** by creating a subclass of `BaseAvroProcessor`, hooking into new or existing topics.  
 - **Add new LLM agents** for specialized tasks (similar to `RealtimeAgent` or `SessionManagementAgent`).  
 - **Modify DB** via migrations or `initialize_database` for additional columns/tables.  
 - **Adjust** session logic or timeouts in `SessionProcessor` to suit your needs.
 
-This modular design ensures you can **scale** or **change** parts of the pipeline without breaking the rest—Kafka topics and the DB serve as the decoupling layer.
-
----
+Review the readme.md file in the intent_analysis subfolder for detailed architecture of this application.

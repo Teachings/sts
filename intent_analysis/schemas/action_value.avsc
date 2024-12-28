@@ -1,0 +1,14 @@
+{
+    "type": "record",
+    "name": "ActionMessage",
+    "namespace": "sts.action",
+    "fields": [
+      { "name": "original_text", "type": "string" },
+      { "name": "reasoning", "type": "string" },
+      { "name": "categorization", "type": ["null", "string"], "default": null },
+      { "name": "refined_prompt", "type": ["null", "string"], "default": null },
+      { "name": "user_id", "type": "string" },
+      { "name": "timestamp", "type": "string" }
+    ]
+  }
+  

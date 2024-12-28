@@ -19,7 +19,7 @@ services:
       - ALLOW_PLAINTEXT_LISTENER=yes
       - KAFKA_CFG_NODE_ID=1
       - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
-      - KAFKA_CFG_NUM_PARTITIONS=2
+      - KAFKA_CFG_NUM_PARTITIONS=1
 
   rest-proxy:
     image: confluentinc/cp-kafka-rest:7.8.0
@@ -28,7 +28,6 @@ services:
     ports:
       - 8082:8082
     hostname: rest-proxy
-    container_name: rest-proxy
     environment:
       KAFKA_REST_HOST_NAME: rest-proxy
       KAFKA_REST_BOOTSTRAP_SERVERS: 'kafka_a:9094'
@@ -47,7 +46,6 @@ services:
      # SCHEMA_REGISTRY_DEBUG: 'true'
 
   kafka-ui:
-    container_name: kafka-ui
     image: provectuslabs/kafka-ui:latest
     depends_on: 
       - kafka_a
@@ -64,7 +62,6 @@ services:
 
   postgres:
     image: postgres:15-alpine
-    container_name: postgres
     ports:
       - 5432:5432
     environment:
@@ -76,7 +73,6 @@ services:
   
   adminer:
     image: adminer
-    container_name: adminer
     depends_on:
       - postgres
     ports:

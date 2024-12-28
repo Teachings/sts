@@ -1,0 +1,10 @@
+{
+  "type": "record",
+  "name": "TranscriptionSegment",
+  "namespace": "sts.transcription",
+  "fields": [
+    { "name": "timestamp", "type": "string" },
+    { "name": "text", "type": "string" },
+    { "name": "user", "type": "string" }
+  ]
+}
