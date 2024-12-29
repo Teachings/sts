@@ -36,7 +36,7 @@ This document covers:
 2.  **Processors**
     -   **RealTimeProcessor**: Consumes transcriptions in real time, uses `RealtimeAgent` to decide if immediate action is needed. **It also ensures a session is always active by requesting a new session when one doesn't exist and checks with `SessionManagementAgent` to determine if an active session should be closed.**
     -   **SessionProcessor**: Listens for session creation/destruction requests, updates the DB, **implements session timeout logic**, and triggers the aggregator when sessions end.
-    -   **AggregatorProcessor**: Gathers transcriptions within a session’s timeframe, aggregates them, and stores the result.
+    -   **AggregatorProcessor**: Gathers transcriptions within a session’s timeframe, aggregates them, gets AI Organized Text and AI organized Summary and stores the result.
     -   **PersistenceProcessor**: Stores all incoming transcriptions into a Postgres table.
     -   **IntentProcessor**: Takes “action required” messages, calls TTS on the `reasoning` field, and plays the audio.
     -   **TranscriptionProcessor** (optional/legacy): Consumes from `transcriptions.all` and uses a simpler agent model (`DecisionAgent`).
@@ -44,6 +44,7 @@ This document covers:
 3.  **Agents / Services**
     -   **RealtimeAgent**: Interacts with an LLM to determine if a user’s utterance requires immediate action (e.g., “turn off the lights”).
     -   **SessionManagementAgent**: An LLM-based agent that decides whether to **DESTROY** a session **based on explicit user requests**.
+    -   **AggregatorAgent**: An older or alternate agent that decides if an action is required for a given transcription.
     -   **DecisionAgent**: An older or alternate agent that decides if an action is required for a given transcription.
     -   **TTS Service**: Connects to an external text-to-speech endpoint and plays the resulting audio.
 
@@ -59,7 +60,7 @@ This document covers:
     -   Consumes from `sessions.management`, updates the `sessions` table, **creating sessions when requested by `RealTimeProcessor`** and setting `active = FALSE` / `end_time` when the user says “destroy session” or when a session times out. **Sessions are automatically closed after a period of inactivity (timeout logic implemented in `SessionProcessor`).**
     -   Publishes an **aggregation request** (`aggregations.request`) when a session ends.
 5.  **AggregatorProcessor**:
-    -   Consumes from `aggregations.request`, queries all transcriptions in that session timeframe from the DB, aggregates them, and updates the `sessions.summary`.
+    -   Consumes from `aggregations.request`, queries all transcriptions in that session timeframe from the DB, aggregates them, and updates the `sessions.ai_organized_text`, `sessions.ai_summary`, `sessions.summary`. It is responsible for taking the raw aggregated text of a session and transforming it into a more organized and readable format.
 6.  **IntentProcessor**:
     -   Consumes “action required” messages from `transcriptions.agent.action`, performs TTS on the `reasoning` field, and plays the audio.
 
