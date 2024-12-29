@@ -81,13 +81,20 @@ def initialize_database(db: Database):
         active BOOLEAN DEFAULT TRUE,
         summary TEXT,
         session_creation_reasoning TEXT,
-        session_destroy_reasoning TEXT
+        session_destroy_reasoning TEXT,
+        ai_organized_text TEXT,
+        ai_summary TEXT
     );
+    """
+
+    create_sessions_user_id_index_sql = """
+    CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions (user_id);
     """
 
     try:
         db.execute(create_transcriptions_sql)
         db.execute(create_sessions_sql)
+        db.execute(create_sessions_user_id_index_sql)
         info("Database tables ensured/created successfully.")
     except Exception as e:
         error(f"Error creating tables: {e}")
