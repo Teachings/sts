@@ -74,25 +74,18 @@ class RealTimeProcessor(BaseAvroProcessor):
                     )
                     info(f"RealTimeProcessor: Published action to {self.output_topic_actions}")
 
-                # 2) Session management check (Check if user has an active session in DB)
-                active_sess = self.db.fetchone("""
+                # 2) Session management check
+                active_session = self.db.fetchone("""
                     SELECT id FROM sessions
                     WHERE user_id = %s AND active = TRUE
                     ORDER BY id DESC LIMIT 1
                 """, (user_id,))
-                has_active_session = bool(active_sess)
 
-                session_decision_obj = self.session_agent.evaluate_session_decision(
-                    user_text=text,
-                    has_active_session=has_active_session
-                )
-                debug(f"Session Decision: {session_decision_obj.model_dump()}")
-
-                # If the session agent decides CREATE or DESTROY, produce to sessions_management_topic
-                if session_decision_obj.session_decision in ("CREATE", "DESTROY"):
+                if not active_session:
+                    # No active session, request creation of a new session
                     session_msg = {
-                        "session_decision": session_decision_obj.session_decision,
-                        "reasoning": session_decision_obj.reasoning,
+                        "session_decision": "CREATE",
+                        "reasoning": "No active session found.",
                         "user_id": user_id,
                         "timestamp": timestamp
                     }
@@ -101,7 +94,26 @@ class RealTimeProcessor(BaseAvroProcessor):
                         topic_name=self.output_topic_sessions,
                         value_dict=session_msg
                     )
-                    info(f"RealTimeProcessor: Session event published: {session_msg}")
+                    info(f"RealTimeProcessor: Published session create request to {self.output_topic_sessions}")
+                else:
+                    # Active session exists, check with SessionManagementAgent if it should be closed
+                    session_decision_obj = self.session_agent.evaluate_session_decision(text)
+                    debug(f"Session Decision: {session_decision_obj.model_dump()}")
+
+                    if session_decision_obj.destroy_decision:
+                        session_msg = {
+                            "session_decision": "DESTROY", # Using string for consistency with original design
+                            "reasoning": session_decision_obj.reasoning,
+                            "user_id": user_id,
+                            "timestamp": timestamp
+                        }
+                        self.produce_message(
+                            producer_name="session_mgmt_producer",
+                            topic_name=self.output_topic_sessions,
+                            value_dict=session_msg
+                        )
+                        info(f"RealTimeProcessor: Published session destroy request to {self.output_topic_sessions}")
+
             except Exception as e:
                 error(f"RealTimeProcessor Error: {e}")
 

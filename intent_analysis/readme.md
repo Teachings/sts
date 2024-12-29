@@ -1,196 +1,206 @@
-# **STS Application - Kafka + Avro Architecture**
+# STS Application - Kafka + Avro Architecture
 
-## **Overview**
+## Overview
 
-This **Kafka-based application** is designed to be **decoupled, modular, and extensible**:
+This Kafka-based application is designed to be decoupled, modular, and extensible:
 
-- **Multiple processors** (e.g. `RealTimeProcessor`, `PersistenceProcessor`, `SessionProcessor`, etc.) demonstrate the flow from **incoming Avro messages** to **database writes**, **LLM-based decisions**, and **final TTS** or **aggregated summaries**.  
-- **Kafka** acts as the data fabric, passing messages between these independently running consumers/producers.  
-- **Agents** (like `RealtimeAgent`, `SessionManagementAgent`, or `DecisionAgent`) and **services** (like the TTS service) are each in their own modules, making them easy to replace, extend, or augment.  
-- **Adding a new processor** means creating a subclass of `BaseAvroProcessor` and hooking into the relevant Kafka topics.  
+- **Multiple processors** (e.g. `RealTimeProcessor`, `PersistenceProcessor`, `SessionProcessor`, etc.) demonstrate the flow from **incoming Avro messages** to **database writes**, **LLM-based decisions**, and **final TTS** or **aggregated summaries**.
+- **Kafka** acts as the data fabric, passing messages between these independently running consumers/producers.
+- **Agents** (like `RealtimeAgent`, `SessionManagementAgent`, or `DecisionAgent`) and **services** (like the TTS service) are each in their own modules, making them easy to replace, extend, or augment.
+- **Adding a new processor** means creating a subclass of `BaseAvroProcessor` and hooking into the relevant Kafka topics.
 - **Adding a new agent** means creating a new class in `agents/` and calling it from whichever processor(s) need that agent’s logic.
 
 This document covers:
 
-1. **System Architecture and High-Level Flow**  
-2. **Processor Concept** (Avro-based)  
-3. **Key Processors** (RealTime, Session, Aggregator, Persistence, Intent, etc.)  
-4. **Avro Schemas & Message Flow**  
-5. **Steps to Add a New Processor** (with Avro)  
-6. **Steps to Add a New Agent**  
-7. **Appendix: Creating and Using Avro Schemas**  
+1.  **System Architecture and High-Level Flow**
+2.  **Processor Concept** (Avro-based)
+3.  **Key Processors** (RealTime, Session, Aggregator, Persistence, Intent, etc.)
+4.  **Avro Schemas & Message Flow**
+5.  **Steps to Add a New Processor** (with Avro)
+6.  **Steps to Add a New Agent**
+7.  **Appendix: Creating and Using Avro Schemas**
 
 ---
 
-## 1. **System Architecture Overview**
+## 1. System Architecture Overview
 
-### 1.1 **Three Primary Layers**
+### 1.1 Three Primary Layers
 
-1. **Core**  
-   - Basic infrastructure and utilities, such as:
-     - **`config_loader.py`**: Loads YAML configuration (Kafka broker info, DB credentials, etc.).  
-     - **`base_avro_processor.py`**: Our common base class for Avro-based Kafka processors.  
-     - **`database.py`**: Database connectivity helpers (Postgres).  
-     - **`logger.py`**: A simplified logger with colorized outputs.
+1.  **Core**
+    -   Basic infrastructure and utilities, such as:
+        -   **`config_loader.py`**: Loads YAML configuration (Kafka broker info, DB credentials, etc.).
+        -   **`base_avro_processor.py`**: Our common base class for Avro-based Kafka processors.
+        -   **`database.py`**: Database connectivity helpers (Postgres).
+        -   **`logger.py`**: A simplified logger with colorized outputs.
 
-2. **Processors**  
-   - **RealTimeProcessor**: Consumes transcriptions in real time, uses `RealtimeAgent` to decide if immediate action is needed, and optionally calls `SessionManagementAgent` to create/destroy sessions.  
-   - **SessionProcessor**: Listens for session creation/destruction commands, updates the DB, and triggers the aggregator when sessions end.  
-   - **AggregatorProcessor**: Gathers transcriptions within a session’s timeframe, aggregates them, and stores the result.  
-   - **PersistenceProcessor**: Stores all incoming transcriptions into a Postgres table.  
-   - **IntentProcessor**: Takes “action required” messages, calls TTS on the `reasoning` field, and plays the audio.  
-   - **TranscriptionProcessor** (optional/legacy): Consumes from `transcriptions.all` and uses a simpler agent model (`DecisionAgent`).
+2.  **Processors**
+    -   **RealTimeProcessor**: Consumes transcriptions in real time, uses `RealtimeAgent` to decide if immediate action is needed. **It also ensures a session is always active by requesting a new session when one doesn't exist and checks with `SessionManagementAgent` to determine if an active session should be closed.**
+    -   **SessionProcessor**: Listens for session creation/destruction requests, updates the DB, **implements session timeout logic**, and triggers the aggregator when sessions end.
+    -   **AggregatorProcessor**: Gathers transcriptions within a session’s timeframe, aggregates them, and stores the result.
+    -   **PersistenceProcessor**: Stores all incoming transcriptions into a Postgres table.
+    -   **IntentProcessor**: Takes “action required” messages, calls TTS on the `reasoning` field, and plays the audio.
+    -   **TranscriptionProcessor** (optional/legacy): Consumes from `transcriptions.all` and uses a simpler agent model (`DecisionAgent`).
 
-3. **Agents / Services**  
-   - **RealtimeAgent**: Interacts with an LLM to determine if a user’s utterance requires immediate action (e.g., “turn off the lights”).  
-   - **SessionManagementAgent**: Another LLM-based agent that decides whether to **CREATE**, **DESTROY**, or **NO_ACTION** a session.  
-   - **DecisionAgent**: An older or alternate agent that decides if an action is required for a given transcription.  
-   - **TTS Service**: Connects to an external text-to-speech endpoint and plays the resulting audio.
+3.  **Agents / Services**
+    -   **RealtimeAgent**: Interacts with an LLM to determine if a user’s utterance requires immediate action (e.g., “turn off the lights”).
+    -   **SessionManagementAgent**: An LLM-based agent that decides whether to **DESTROY** a session **based on explicit user requests**.
+    -   **DecisionAgent**: An older or alternate agent that decides if an action is required for a given transcription.
+    -   **TTS Service**: Connects to an external text-to-speech endpoint and plays the resulting audio.
 
-### 1.2 **High-Level Message Flow**
+### 1.2 High-Level Message Flow
 
-1. **Speech-to-Text** service publishes transcriptions as **Avro** messages to **`transcriptions.all`**.  
-2. **PersistenceProcessor** consumes these Avro messages and writes them to Postgres for permanent storage.  
-3. **RealTimeProcessor**:
-   - Consumes from `transcriptions.all`.  
-   - Uses `RealtimeAgent` to see if immediate action is needed. If yes, it **produces** an Avro message to `transcriptions.agent.action`.  
-   - Also calls `SessionManagementAgent` to see if we should create/destroy sessions, publishing to `sessions.management`.  
-4. **SessionProcessor**:
-   - Consumes from `sessions.management`, updates the `sessions` table, and sets `active = FALSE` / `end_time` when user says “destroy session.”  
-   - Publishes an **aggregation request** (`aggregations.request`) when a session ends.  
-5. **AggregatorProcessor**:
-   - Consumes from `aggregations.request`, queries all transcriptions in that session timeframe from the DB, aggregates them, and updates the `sessions.summary`.  
-6. **IntentProcessor**:
-   - Consumes “action required” messages from `transcriptions.agent.action`, performs TTS on the `reasoning` field, and plays the audio.
+1.  **Speech-to-Text** service publishes transcriptions as Avro messages to **`transcriptions.all`**.
+2.  **PersistenceProcessor** consumes these Avro messages and writes them to Postgres for permanent storage.
+3.  **RealTimeProcessor**:
+    -   Consumes from `transcriptions.all`.
+    -   Uses `RealtimeAgent` to see if immediate action is needed. If yes, it produces an Avro message to `transcriptions.agent.action`.
+    -   **Checks for an active session. If none exists, it publishes a `CREATE` message to `sessions.management`. If a session exists, it calls `SessionManagementAgent` to see if we should destroy the session, publishing to `sessions.management` if necessary.**
+4.  **SessionProcessor**:
+    -   Consumes from `sessions.management`, updates the `sessions` table, **creating sessions when requested by `RealTimeProcessor`** and setting `active = FALSE` / `end_time` when the user says “destroy session” or when a session times out. **Sessions are automatically closed after a period of inactivity (timeout logic implemented in `SessionProcessor`).**
+    -   Publishes an **aggregation request** (`aggregations.request`) when a session ends.
+5.  **AggregatorProcessor**:
+    -   Consumes from `aggregations.request`, queries all transcriptions in that session timeframe from the DB, aggregates them, and updates the `sessions.summary`.
+6.  **IntentProcessor**:
+    -   Consumes “action required” messages from `transcriptions.agent.action`, performs TTS on the `reasoning` field, and plays the audio.
 
-All these processors are **loosely coupled**—they communicate only through **Kafka topics** with Avro messages.
+All these processors are loosely coupled—they communicate only through Kafka topics with Avro messages.
 
 ---
 
-## 2. **Processor Concept (Avro)**
+## 2. Processor Concept (Avro)
 
 Each **Processor** is a **class** that inherits from `BaseAvroProcessor`. This base class:
 
-- Sets up an **AvroConsumer** for reading Avro-serialized messages from Kafka.  
-- Lets you initialize one or more **AvroProducer** instances if you also need to send Avro-serialized messages to another topic.  
-- Handles signals (SIGINT, SIGTERM) for graceful shutdown.  
-- Provides a `run()` method with a polling loop that calls `process_records()`.
+-   Sets up an **AvroConsumer** for reading Avro-serialized messages from Kafka.
+-   Lets you initialize one or more **AvroProducer** instances if you also need to send Avro-serialized messages to another topic.
+-   Handles signals (SIGINT, SIGTERM) for graceful shutdown.
+-   Provides a `run()` method with a polling loop that calls `process_records()`.
 
 ### Typical Steps in a Processor
 
-1. In the constructor (`__init__`):
-   - Load config.  
-   - Call `init_consumer(group_id, [list_of_topics])`.  
-   - If you need to produce Avro messages to other topics, call `init_producer("producer_name", "schemas/some_schema.avsc")` for each schema.  
-2. In `process_records()`:
-   - Poll for messages (`msg = self.consumer.poll(...)`).  
-   - Handle any errors.  
-   - Parse the Avro-deserialized dictionary from `msg.value()`.  
-   - Use your logic or agent calls to decide what to do with the message.  
-   - If you need to produce an Avro message, call:
-     ```python
-     self.produce_message(
-       producer_name="some_producer",
-       topic_name="some_topic",
-       value_dict=your_avro_compatible_dict
-     )
-     ```
-3. `shutdown()` is automatically called on signals.
+1.  In the constructor (`__init__`):
+    -   Load config.
+    -   Call `init_consumer(group_id, [list_of_topics])`.
+    -   If you need to produce Avro messages to other topics, call `init_producer("producer_name", "schemas/some_schema.avsc")` for each schema.
+2.  In `process_records()`:
+    -   Poll for messages (`msg = self.consumer.poll(...)`).
+    -   Handle any errors.
+    -   Parse the Avro-deserialized dictionary from `msg.value()`.
+    -   Use your logic or agent calls to decide what to do with the message.
+    -   If you need to produce an Avro message, call:
+
+        ```python
+        self.produce_message(
+          producer_name="some_producer",
+          topic_name="some_topic",
+          value_dict=your_avro_compatible_dict
+        )
+        ```
+
+3.  `shutdown()` is automatically called on signals.
 
 ---
 
-## 3. **Key Processors in This Project**
+## 3. Key Processors in This Project
 
-1. **RealTimeProcessor**  
-   - **Consumes**: `transcriptions.all` (schema: `transcription_value.avsc`)  
-   - **Produces**: `transcriptions.agent.action` (schema: `action_value.avsc`) + `sessions.management` (schema: `session_mgmt_value.avsc`)  
+1.  **RealTimeProcessor**
+    -   **Consumes**: `transcriptions.all` (schema: `transcription_value.avsc`)
+    -   **Produces**: `transcriptions.agent.action` (schema: `action_value.avsc`) + `sessions.management` (schema: `session_mgmt_value.avsc`)
 
-2. **SessionProcessor**  
-   - **Consumes**: `sessions.management` (schema: `session_mgmt_value.avsc`)  
-   - **Produces**: `aggregations.request` (schema: `aggregator_value.avsc`)  
+2.  **SessionProcessor**
+    -   **Consumes**: `sessions.management` (schema: `session_mgmt_value.avsc`)
+    -   **Produces**: `aggregations.request` (schema: `aggregator_value.avsc`)
 
-3. **AggregatorProcessor**  
-   - **Consumes**: `aggregations.request` (schema: `aggregator_value.avsc`)  
-   - **Produces**: none (just updates DB)  
+3.  **AggregatorProcessor**
+    -   **Consumes**: `aggregations.request` (schema: `aggregator_value.avsc`)
+    -   **Produces**: none (just updates DB)
 
-4. **PersistenceProcessor**  
-   - **Consumes**: `transcriptions.all` (schema: `transcription_value.avsc`)  
-   - **Produces**: none (just inserts into DB)  
+4.  **PersistenceProcessor**
+    -   **Consumes**: `transcriptions.all` (schema: `transcription_value.avsc`)
+    -   **Produces**: none (just inserts into DB)
 
-5. **IntentProcessor**  
-   - **Consumes**: `transcriptions.agent.action` (schema: `action_value.avsc`)  
-   - **Produces**: none (just calls TTS)
+5.  **IntentProcessor**
+    -   **Consumes**: `transcriptions.agent.action` (schema: `action_value.avsc`)
+    -   **Produces**: none (just calls TTS)
 
 *(We also have an optional `TranscriptionProcessor` that consumes from `transcriptions.all` and publishes to `transcriptions.agent.action`, but it’s more legacy.)*
 
 ---
 
-## 4. **Avro Schemas & Message Flow**
+## 4. Avro Schemas & Message Flow
 
 We store **Avro schemas** in the `schemas/` directory. For example:
 
-1. **`transcription_value.avsc`**  
-   ```json
-   {
-     "type": "record",
-     "name": "TranscriptionSegment",
-     "namespace": "sts.transcription",
-     "fields": [
-       { "name": "timestamp", "type": "string" },
-       { "name": "text", "type": "string" },
-       { "name": "user", "type": "string" }
-     ]
-   }
-   ```
-   - Used on topic `transcriptions.all`.
+1.  **`transcription_value.avsc`**
 
-2. **`action_value.avsc`**  
-   ```json
-   {
-     "type": "record",
-     "name": "ActionMessage",
-     "namespace": "sts.action",
-     "fields": [
-       { "name": "original_text", "type": "string" },
-       { "name": "reasoning", "type": "string" },
-       { "name": "categorization", "type": ["null","string"], "default": null },
-       { "name": "refined_prompt", "type": ["null","string"], "default": null },
-       { "name": "user_id", "type": "string" },
-       { "name": "timestamp", "type": "string" }
-     ]
-   }
-   ```
-   - Used on topic `transcriptions.agent.action`.
+    ```json
+    {
+      "type": "record",
+      "name": "TranscriptionSegment",
+      "namespace": "sts.transcription",
+      "fields": [
+        { "name": "timestamp", "type": "string" },
+        { "name": "text", "type": "string" },
+        { "name": "user", "type": "string" }
+      ]
+    }
+    ```
 
-3. **`session_mgmt_value.avsc`**  
-   ```json
-   {
-     "type": "record",
-     "name": "SessionMgmtMessage",
-     "namespace": "sts.session",
-     "fields": [
-       { "name": "session_decision", "type": "string" },
-       { "name": "reasoning", "type": "string" },
-       { "name": "user_id", "type": "string" },
-       { "name": "timestamp", "type": "string" }
-     ]
-   }
-   ```
-   - Used on topic `sessions.management`.
+    -   Used on topic `transcriptions.all`.
 
-4. **`aggregator_value.avsc`**  
-   ```json
-   {
-     "type": "record",
-     "name": "AggregatorRequest",
-     "namespace": "sts.aggregator",
-     "fields": [
-       { "name": "session_id", "type": "int" },
-       { "name": "user_id", "type": "string" }
-     ]
-   }
-   ```
-   - Used on topic `aggregations.request`.
+2.  **`action_value.avsc`**
+
+    ```json
+    {
+      "type": "record",
+      "name": "ActionMessage",
+      "namespace": "sts.action",
+      "fields": [
+        { "name": "original_text", "type": "string" },
+        { "name": "reasoning", "type": "string" },
+        { "name": "categorization", "type": ["null","string"], "default": null },
+        { "name": "refined_prompt", "type": ["null","string"], "default": null },
+        { "name": "user_id", "type": "string" },
+        { "name": "timestamp", "type": "string" }
+      ]
+    }
+    ```
+
+    -   Used on topic `transcriptions.agent.action`.
+
+3.  **`session_mgmt_value.avsc`**
+
+    ```json
+    {
+      "type": "record",
+      "name": "SessionMgmtMessage",
+      "namespace": "sts.session",
+      "fields": [
+        { "name": "session_decision", "type": "string" },
+        { "name": "reasoning", "type": "string" },
+        { "name": "user_id", "type": "string" },
+        { "name": "timestamp", "type": "string" }
+      ]
+    }
+    ```
+
+    -   Used on topic `sessions.management`.
+
+4.  **`aggregator_value.avsc`**
+
+    ```json
+    {
+      "type": "record",
+      "name": "AggregatorRequest",
+      "namespace": "sts.aggregator",
+      "fields": [
+        { "name": "session_id", "type": "int" },
+        { "name": "user_id", "type": "string" }
+      ]
+    }
+    ```
+
+    -   Used on topic `aggregations.request`.
 
 The **Confluent Schema Registry** is used to store these schemas. Our code uses **`confluent-kafka[avro]`** to automatically **register** or **fetch** schemas based on the topic when we produce/consume messages.
 
@@ -401,5 +411,3 @@ With **`BaseAvroProcessor`**, **all** of our processors:
 - Store **common** logic (database, logging, config) in `core/`.  
 - **Create** or re-use Avro schemas for each topic.  
 - For new functionality, **add a new processor** or **agent** as needed.
-
-This approach ensures your application remains **scalable**, **extensible**, and **testable**, with each processor as an independently deployable microservice built on top of Kafka and Avro.

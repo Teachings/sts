@@ -39,4 +39,4 @@ text_to_speech:
   response_format: "mp3"
 
 app:
-  voice_session_timeout_hours: 1
+  session_timeout_seconds: 3600
