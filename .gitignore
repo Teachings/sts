@@ -57,3 +57,5 @@ test_results.json
 *.wav
 transcriptions_*.json
 *.mp3
+
+mlx_models/

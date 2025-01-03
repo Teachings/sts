@@ -4,20 +4,21 @@
 user: "mukul" # The username associated with this configuration
 
 # Speech to text settings 
-device: "cuda" # Specify the device to use for processing ("cuda" for NVIDIA GPUs or "cpu")
-compute_type: "float32" # Specify the compute type ("float16" for CUDA, "int8" for CPU)
-voice-model: "large-v3-turbo" # Specify the voice model to use (e.g., "base.en")
+device: "mps" # Specify the device to use for processing ("cuda" for NVIDIA GPUs or "cpu")
+compute_type: "int8" # Specify the compute type ("float16" for CUDA, "int8" for CPU)
+voice-model: "large-v3" # Specify the voice model to use (e.g., "base.en")
 
 # List of favorite microphones
 favorite_microphones:
   - "Elgato Wave XLR" # A preferred microphone model
   # - "Jabra SPEAK 410" # Another preferred microphone model (commented out)
+  - MacBook Pro Microphone
 
 # Time gap threshold in seconds to determine if a new speech segment starts
 time_gap_threshold: 1 # The time gap in seconds considered as the start of a new speech segment
 
 # Delay in seconds after the last speech to consider the end of speech for VAD (Voice Activity Detection)
-end_speech_delay: 2 # The delay in seconds after the last speech to determine the end of speech
+end_speech_delay: 1 # The delay in seconds after the last speech to determine the end of speech
 
 # Delay in seconds to record extra sound after VAD detected pause in last speech segment
 post_speech_buffer_duration: 0 # Additional buffer duration in seconds to capture trailing audio

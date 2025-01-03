@@ -3,6 +3,7 @@ torchaudio
 sounddevice
 scipy
 faster-whisper
+lightning-whisper-mlx
 termcolor
 kafka-python
 pydantic
